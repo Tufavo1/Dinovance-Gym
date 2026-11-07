@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dinovance-gym",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./www",
+    // Cualquier ruta que no sea un archivo devuelve index.html (necesario para el router de Angular)
+    "not_found_handling": "single-page-application"
+  }
+}
