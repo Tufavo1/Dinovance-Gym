@@ -164,8 +164,17 @@ create table public.health_profiles (
   days_per_week         smallint check (days_per_week between 1 and 7),
   session_minutes       smallint check (session_minutes between 10 and 180),
   places                text[] not null default '{}',   -- smartfit, plaza, casa, otro_gimnasio
-  goal                  text check (goal in ('perder_grasa', 'ganar_musculo', 'fuerza', 'resistencia', 'salud_general', 'tonificar')),
+  goal                  text check (goal in ('perder_grasa', 'ganar_musculo', 'fuerza', 'tonificar', 'resistencia', 'salud_general', 'postura', 'movilidad', 'deporte', 'retomar')),
+  secondary_goals       text[] not null default '{}'
+    check (secondary_goals <@ array['perder_grasa', 'ganar_musculo', 'fuerza', 'tonificar', 'resistencia', 'salud_general', 'postura', 'movilidad', 'deporte', 'retomar']::text[]),
+  focus_areas           text[] not null default '{}'
+    check (focus_areas <@ array['pecho', 'espalda', 'hombros', 'brazos', 'abdomen', 'gluteos', 'piernas']::text[]),
+  goal_detail           text,
   sports                text[] not null default '{}',   -- deportes que le gustaría practicar
+  training_styles       text[] not null default '{}'    -- modalidad: musculacion, hipertrofia, halterofilia...
+    check (training_styles <@ array['musculacion', 'hipertrofia', 'fuerza', 'halterofilia', 'gimnasia', 'funcional', 'cardio', 'movilidad', 'otro', 'no_se']::text[]),
+  training_styles_other text,
+  place_equipment       jsonb not null default '{}'::jsonb,   -- equipo por lugar: {"smartfit": ["barra", ...]}
   has_medical_condition boolean not null default false,
   medical_notes         text,
   consent_health_data   boolean not null default false,
@@ -199,6 +208,8 @@ create table public.routines (
   goal          text,
   days_per_week smallint check (days_per_week between 1 and 7),
   is_active     boolean not null default true,
+  place         text,
+  notes         text,
   created_at    timestamptz not null default now()
 );
 

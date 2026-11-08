@@ -1,21 +1,41 @@
-<ion-header [translucent]="true">
+<ion-header>
   <ion-toolbar>
-    <ion-title> Blank </ion-title>
+    <ion-title>Avanza</ion-title>
   </ion-toolbar>
 </ion-header>
 
-<ion-content [fullscreen]="true">
-  <ion-header collapse="condense">
-    <ion-toolbar>
-      <ion-title size="large">Blank</ion-title>
-    </ion-toolbar>
-  </ion-header>
+<ion-content>
+  <div class="page">
+    <h1>Hola{{ firstName() ? ', ' + firstName() : '' }} 👋</h1>
 
-  <div id="container">
-    <strong>Ready to create an app?</strong>
-    <p>
-      Start with Ionic
-      <a target="_blank" rel="noopener noreferrer" href="https://ionicframework.com/docs/components">UI Components</a>
-    </p>
+    @if (summary(); as s) {
+      <ion-card>
+        <ion-card-header>
+          <ion-card-subtitle>Tu plan</ion-card-subtitle>
+          <ion-card-title>{{ s.goal }}</ion-card-title>
+        </ion-card-header>
+        <ion-card-content>
+          Tipo: {{ s.styles }}<br />
+          {{ s.days }} días por semana · {{ s.minutes }} min por sesión<br />
+          Entrenas en: {{ s.places }}
+        </ion-card-content>
+      </ion-card>
+    }
+
+    <ion-card>
+      <ion-card-header>
+        <ion-card-title>Tu rutina</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        Armada según tu nivel, objetivo, el equipamiento de tu lugar y tus lesiones.
+        <ion-button class="ion-margin-top" expand="block" routerLink="/rutina">
+          Ver o generar mi rutina
+        </ion-button>
+      </ion-card-content>
+    </ion-card>
+
+    <ion-button expand="block" fill="outline" color="medium" (click)="logout()">
+      Cerrar sesión
+    </ion-button>
   </div>
 </ion-content>

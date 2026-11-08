@@ -35,3 +35,42 @@
 /* @import "@ionic/angular/css/palettes/dark.always.css"; */
 /* @import "@ionic/angular/css/palettes/dark.class.css"; */
 @import '@ionic/angular/css/palettes/dark.system.css';
+
+/* Contenedor centrado para formularios (se ve bien en móvil y en pantallas grandes) */
+.page {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.page ion-input,
+.page ion-select,
+.page ion-textarea {
+  margin-bottom: 14px;
+}
+
+/* Permite que los textos largos de checkbox, toggle y radio se vean en varias líneas */
+ion-checkbox::part(label),
+ion-toggle::part(label),
+ion-radio::part(label) {
+  white-space: normal;
+}
+
+.opt small {
+  display: block;
+  color: var(--ion-color-medium);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.section-title {
+  margin: 20px 0 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--ion-color-medium);
+  margin: 0 0 12px;
+}
