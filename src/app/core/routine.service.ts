@@ -3,8 +3,17 @@ import { Injectable, inject } from '@angular/core';
 import { AuthService } from './auth.service';
 import { PLACE_PRESETS } from './equipment';
 import { ExerciseService } from './exercise.service';
+import { localStore } from './local-store';
+import type { Exercise } from './models';
 import { ProfileService } from './profile.service';
-import { generateRoutine, type GeneratedRoutine } from './routine-generator';
+import {
+  findAlternatives,
+  generateRoutine,
+  type Alternative,
+  type GeneratedExercise,
+  type GeneratedRoutine,
+  type GeneratorInput,
+} from './routine/generator';
 import { SupabaseService } from './supabase.service';
 
 export interface StoredExercise {
@@ -22,6 +31,7 @@ export interface StoredDay {
   id: string;
   day_index: number;
   name: string;
+  estimated_minutes: number | null;
   routine_exercises: StoredExercise[];
 }
 
@@ -31,9 +41,16 @@ export interface StoredRoutine {
   goal: string | null;
   place: string | null;
   notes: string | null;
+  is_active: boolean;
+  days_per_week: number | null;
   created_at: string;
   routine_days: StoredDay[];
 }
+
+/** Por qué se cambia un ejercicio (se guarda para no volver a proponerlo). */
+export type SwapReason = 'no_me_gusta' | 'molestia' | 'no_hay_maquina' | 'muy_dificil';
+
+export type RoutineSummary = Omit<StoredRoutine, 'routine_days' | 'notes'>;
 
 export class EmptyExerciseCatalogError extends Error {
   constructor() {
@@ -41,6 +58,21 @@ export class EmptyExerciseCatalogError extends Error {
   }
 }
 
+/** Copia local de la rutina activa para poder verla sin internet (PWA). */
+interface RoutineSnapshot {
+  routine: StoredRoutine;
+  exercises: Exercise[];
+}
+
+const SELECT_FULL =
+  'id,name,goal,place,notes,is_active,days_per_week,created_at,' +
+  'routine_days(id,day_index,name,estimated_minutes,' +
+  'routine_exercises(id,exercise_id,position,sets,reps_min,reps_max,rest_seconds,notes))';
+
+/**
+ * Rutinas del usuario. Todas las consultas pasan por RLS: cada persona solo ve, activa o
+ * borra sus propias rutinas. El guardado es atómico mediante la función save_routine.
+ */
 @Injectable({ providedIn: 'root' })
 export class RoutineService {
   private readonly sb = inject(SupabaseService).client;
@@ -48,30 +80,119 @@ export class RoutineService {
   private readonly profiles = inject(ProfileService);
   private readonly catalog = inject(ExerciseService);
 
-  /** Rutina activa del usuario con sus días y ejercicios, o null si no tiene. */
-  async loadActive(): Promise<StoredRoutine | null> {
-    const { data, error } = await this.sb
-      .from('routines')
-      .select(
-        'id,name,goal,place,notes,created_at,routine_days(id,day_index,name,routine_exercises(id,exercise_id,position,sets,reps_min,reps_max,rest_seconds,notes))',
-      )
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) throw error;
-    if (!data) return null;
-
-    const routine = data as unknown as StoredRoutine;
-    routine.routine_days.sort((a, b) => a.day_index - b.day_index);
-    for (const day of routine.routine_days) {
-      day.routine_exercises.sort((a, b) => a.position - b.position);
+  /**
+   * Rutina activa. Sin conexión devuelve la última copia guardada en el teléfono
+   * (y `offline` en true); si no hay copia, propaga el error.
+   */
+  async loadActive(): Promise<{ routine: StoredRoutine | null; offline: boolean }> {
+    try {
+      // Sin red, Supabase puede quedar esperando (por ejemplo, renovando la sesión):
+      // se usa la copia local de inmediato o tras unos segundos.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('offline');
+      const { data, error } = await withTimeout(
+        this.sb.from('routines').select(SELECT_FULL).eq('is_active', true).maybeSingle(),
+        8000,
+      );
+      if (error) throw error;
+      const routine = data ? normalize(data as unknown as StoredRoutine) : null;
+      this.saveSnapshot(routine);
+      return { routine, offline: false };
+    } catch (e) {
+      const snap = this.readSnapshot();
+      if (!snap) throw e;
+      this.catalog.seed(snap.exercises);
+      return { routine: snap.routine, offline: true };
     }
-    return routine;
   }
 
-  /** Genera una rutina nueva para el lugar indicado y la guarda como rutina activa. */
+  async loadById(id: string): Promise<StoredRoutine | null> {
+    const { data, error } = await this.sb.from('routines').select(SELECT_FULL).eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? normalize(data as unknown as StoredRoutine) : null;
+  }
+
+  /** Todas las rutinas guardadas del usuario, la más reciente primero. */
+  async list(): Promise<RoutineSummary[]> {
+    const { data, error } = await this.sb
+      .from('routines')
+      .select('id,name,goal,place,is_active,days_per_week,created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    return (data ?? []) as RoutineSummary[];
+  }
+
+  async activate(id: string): Promise<void> {
+    const { error } = await this.sb.rpc('activate_routine', { p_routine_id: id });
+    if (error) throw error;
+  }
+
+  async remove(id: string): Promise<void> {
+    const { error } = await this.sb.from('routines').delete().eq('id', id);
+    if (error) throw error;
+    if (this.readSnapshot()?.routine.id === id) this.saveSnapshot(null);
+  }
+
+  /** Genera una rutina nueva para el lugar indicado y la deja como rutina activa. */
   async generateAndSave(place: string): Promise<void> {
+    const input = await this.generatorInput(place);
+    const generated = generateRoutine(input);
+
+    if (generated.days.every((d) => d.exercises.length === 0)) {
+      throw new Error('No se pudo armar la rutina con los datos actuales');
+    }
+
+    const { error } = await this.sb.rpc('save_routine', {
+      p_routine: { ...generated, notes: generated.notes.join('\n') },
+    });
+    if (error) throw error;
+  }
+
+  /** Guarda una rutina armada a mano y la deja como rutina actual. */
+  async saveManual(routine: GeneratedRoutine): Promise<void> {
+    const { error } = await this.sb.rpc('save_routine', {
+      p_routine: { ...routine, notes: routine.notes.join('\n') },
+    });
+    if (error) throw error;
+  }
+
+  /**
+   * Ejercicios que pueden reemplazar a otro en esta rutina: mismo músculo, seguros para la
+   * persona, sin repetir los que ya tiene la rutina ni los que marcó como "no me gusta".
+   */
+  async alternatives(routine: StoredRoutine, exerciseId: string): Promise<Alternative[]> {
+    const input = await this.generatorInput(routine.place ?? this.profiles.health()?.places?.[0] ?? 'smartfit');
+    const inRoutine = routine.routine_days.flatMap((d) => d.routine_exercises.map((e) => e.exercise_id));
+    return findAlternatives(input, exerciseId, inRoutine);
+  }
+
+  /** Cambia un ejercicio por otro en la misma posición de todos los días de la rutina. */
+  async swapExercise(routineId: string, oldExerciseId: string, next: GeneratedExercise, reason: SwapReason) {
+    const { error } = await this.sb.rpc('swap_exercise', {
+      p_routine_id: routineId,
+      p_old_exercise: oldExerciseId,
+      p_new: next,
+      p_reason: reason,
+    });
+    if (error) throw error;
+    this.avoidCache = null;
+    // Refresca la copia local para que el cambio se vea también sin conexión.
+    await this.loadActive().catch(() => undefined);
+  }
+
+  private avoidCache: string[] | null = null;
+
+  /** Ejercicios que la persona marcó como "no me gusta". */
+  private async avoidList(): Promise<string[]> {
+    if (this.avoidCache) return this.avoidCache;
+    const { data, error } = await this.sb.from('exercise_preferences').select('exercise_id');
+    if (error) return [];
+    this.avoidCache = (data ?? []).map((r) => r.exercise_id as string);
+    return this.avoidCache;
+  }
+
+  /** Datos para el generador (perfil, equipo del lugar, lesiones, preferencias y catálogo). */
+  async generatorInput(place: string): Promise<GeneratorInput> {
     const uid = this.auth.user()?.id;
     const health = this.profiles.health();
     if (!uid || !health) throw new Error('Faltan datos del perfil');
@@ -79,90 +200,78 @@ export class RoutineService {
     await this.catalog.ensureLoaded();
     if (this.catalog.exercises().length === 0) throw new EmptyExerciseCatalogError();
 
-    const gear = health.place_equipment?.[place] ?? PLACE_PRESETS[place] ?? [];
-    const generated = generateRoutine({
+    const profile = this.profiles.profile();
+    return {
       exercises: this.catalog.exercises(),
       areaMuscles: this.catalog.areaMuscles(),
       manualContra: this.catalog.contraindications(),
       health,
       injuries: this.profiles.injuries(),
       place,
-      gear,
-      age: ageFrom(this.profiles.profile()?.birth_date ?? null),
+      gear: health.place_equipment?.[place] ?? PLACE_PRESETS[place] ?? [],
+      age: ageFrom(profile?.birth_date ?? null),
+      gender: profile?.gender ?? null,
+      avoid: await this.avoidList(),
       seed: `${uid}:${Date.now()}`,
-    });
-
-    if (generated.days.every((d) => d.exercises.length === 0)) {
-      throw new Error('No se pudo armar la rutina con los datos actuales');
-    }
-    await this.save(generated);
+    };
   }
 
-  private async save(r: GeneratedRoutine): Promise<void> {
-    // La rutina nueva se crea inactiva y solo se activa cuando todo se guardó bien.
-    const created = await this.sb
-      .from('routines')
-      .insert({
-        name: r.name,
-        goal: r.goal,
-        days_per_week: r.days_per_week,
-        place: r.place,
-        notes: r.notes.join('\n'),
-        is_active: false,
-      })
-      .select('id')
-      .single();
-    if (created.error) throw created.error;
-    const routineId = created.data.id as string;
+  private snapshotKey(): string | null {
+    const uid = this.auth.user()?.id;
+    return uid ? `routine.${uid}` : null;
+  }
 
-    try {
-      const days = await this.sb
-        .from('routine_days')
-        .insert(r.days.map((d) => ({ routine_id: routineId, day_index: d.day_index, name: d.name })))
-        .select('id,day_index');
-      if (days.error) throw days.error;
-      const dayId = new Map((days.data ?? []).map((d) => [d.day_index as number, d.id as string]));
-
-      const rows = r.days.flatMap((d) =>
-        d.exercises.map((e, i) => ({
-          day_id: dayId.get(d.day_index),
-          exercise_id: e.exercise_id,
-          position: i + 1,
-          sets: e.sets,
-          reps_min: e.reps_min,
-          reps_max: e.reps_max,
-          rest_seconds: e.rest_seconds,
-          notes: e.notes,
-        })),
-      );
-      const ins = await this.sb.from('routine_exercises').insert(rows);
-      if (ins.error) throw ins.error;
-
-      const off = await this.sb
-        .from('routines')
-        .update({ is_active: false })
-        .eq('is_active', true)
-        .neq('id', routineId);
-      if (off.error) throw off.error;
-      const on = await this.sb.from('routines').update({ is_active: true }).eq('id', routineId);
-      if (on.error) throw on.error;
-    } catch (e) {
-      // Limpia la rutina a medio guardar (los días y ejercicios se borran en cascada).
-      await this.sb.from('routines').delete().eq('id', routineId);
-      throw e;
+  private saveSnapshot(routine: StoredRoutine | null) {
+    const key = this.snapshotKey();
+    if (!key) return;
+    if (!routine) {
+      localStore.remove(key);
+      return;
     }
+    // Sin catálogo cargado (por ejemplo desde Inicio) no se pisa la copia anterior.
+    if (this.catalog.exercises().length === 0) return;
+    const ids = new Set(routine.routine_days.flatMap((d) => d.routine_exercises.map((e) => e.exercise_id)));
+    const exercises = this.catalog.exercises().filter((e) => ids.has(e.id));
+    localStore.set(key, { routine, exercises } satisfies RoutineSnapshot);
+  }
+
+  private readSnapshot(): RoutineSnapshot | null {
+    const key = this.snapshotKey();
+    return key ? localStore.get<RoutineSnapshot>(key) : null;
   }
 }
 
-function ageFrom(birthDate: string | null): number | null {
+/** Rechaza la promesa si no responde a tiempo (red lenta o sin conexión). */
+function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    Promise.resolve(promise).then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+function normalize(routine: StoredRoutine): StoredRoutine {
+  routine.routine_days.sort((a, b) => a.day_index - b.day_index);
+  for (const day of routine.routine_days) day.routine_exercises.sort((a, b) => a.position - b.position);
+  return routine;
+}
+
+export function ageFrom(birthDate: string | null): number | null {
   if (!birthDate) return null;
   const born = new Date(birthDate + 'T00:00:00');
   if (Number.isNaN(born.getTime())) return null;
   const now = new Date();
   let age = now.getFullYear() - born.getFullYear();
   const had =
-    now.getMonth() > born.getMonth() ||
-    (now.getMonth() === born.getMonth() && now.getDate() >= born.getDate());
+    now.getMonth() > born.getMonth() || (now.getMonth() === born.getMonth() && now.getDate() >= born.getDate());
   if (!had) age--;
   return age;
 }

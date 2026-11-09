@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type { Session } from '@supabase/supabase-js';
 
+import { localStore } from './local-store';
 import { SupabaseService } from './supabase.service';
 
 export interface SignUpMetadata {
@@ -45,9 +46,14 @@ export class AuthService {
     return result;
   }
 
+  /** Cierra sesión y borra del teléfono todo lo guardado (borradores con datos de salud, rutinas). */
   async signOut() {
-    await this.sb.auth.signOut();
-    this.session.set(null);
+    try {
+      await this.sb.auth.signOut();
+    } finally {
+      localStore.clearAll();
+      this.session.set(null);
+    }
   }
 }
 
@@ -60,8 +66,7 @@ export function translateAuthError(message: string): string {
   if (m.includes('email not confirmed')) return 'Debes confirmar tu correo antes de entrar.';
   if (m.includes('rate limit') || m.includes('too many'))
     return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
-  if (m.includes('password')) return 'La contraseña no cumple los requisitos (mínimo 8 caracteres).';
-  if (m.includes('fetch') || m.includes('network'))
-    return 'No se pudo conectar. Revisa tu internet.';
+  if (m.includes('password')) return 'La contraseña debe tener al menos 8 caracteres, con letras y números.';
+  if (m.includes('fetch') || m.includes('network')) return 'No se pudo conectar. Revisa tu internet.';
   return 'Ocurrió un error. Inténtalo de nuevo.';
 }

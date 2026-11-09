@@ -22,8 +22,12 @@ export const guestGuard: CanActivateFn = async () => {
 
 /** Exige haber completado el cuestionario de salud; si no, manda a /onboarding. */
 export const onboardedGuard: CanActivateFn = async () => {
+  const auth = inject(AuthService);
   const profiles = inject(ProfileService);
   const router = inject(Router);
+  // Angular ejecuta las guardas en paralelo: hay que esperar a que se recupere la sesión,
+  // si no, al recargar la página el perfil se lee sin usuario y se manda al cuestionario.
+  await auth.initialized;
   try {
     await profiles.load();
   } catch {

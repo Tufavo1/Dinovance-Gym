@@ -1,12 +1,45 @@
 <ion-header>
   <ion-toolbar>
     <ion-title>Avanza</ion-title>
+    <ion-buttons slot="end">
+      <ion-button aria-label="Cerrar sesión" (click)="logout()">
+        <ion-icon slot="icon-only" name="log-out-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
   <div class="page">
     <h1>Hola{{ firstName() ? ', ' + firstName() : '' }} 👋</h1>
+
+    <!-- Una sola acción principal: lo que toca hoy (Hick + Fitts) -->
+    <ion-card class="cta" color="primary">
+      <ion-card-header>
+        <ion-card-subtitle>Hoy te toca</ion-card-subtitle>
+        <ion-card-title>{{ todayTitle() }}</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>{{ todayDetail() }}</p>
+        @if (today(); as t) {
+          <ion-button expand="block" size="large" color="light" [routerLink]="['/entrenar', t.id]">Empezar</ion-button>
+          <ion-button expand="block" fill="clear" color="light" routerLink="/rutina">Ver la rutina completa</ion-button>
+        } @else {
+          <ion-button expand="block" size="large" color="light" routerLink="/rutina">Generar mi rutina</ion-button>
+        }
+      </ion-card-content>
+    </ion-card>
+
+    @if (week(); as w) {
+      <section class="week" aria-label="Progreso de la semana">
+        <div class="week-head">
+          <span>Esta semana</span>
+          <strong>{{ w.done }} de {{ w.goal }}</strong>
+        </div>
+        <ion-progress-bar [value]="w.done / w.goal" color="success"></ion-progress-bar>
+        <p class="hint">{{ w.message }}</p>
+      </section>
+    }
 
     @if (summary(); as s) {
       <ion-card>
@@ -15,27 +48,31 @@
           <ion-card-title>{{ s.goal }}</ion-card-title>
         </ion-card-header>
         <ion-card-content>
-          Tipo: {{ s.styles }}<br />
-          {{ s.days }} días por semana · {{ s.minutes }} min por sesión<br />
-          Entrenas en: {{ s.places }}
+          <ion-list lines="none">
+            <ion-item>
+              <ion-label>
+                <p>Tipo</p>
+                <h3>{{ s.styles }}</h3>
+              </ion-label>
+            </ion-item>
+            <ion-item>
+              <ion-label>
+                <p>Frecuencia</p>
+                <h3>{{ s.days }} días por semana · {{ s.minutes }} min</h3>
+              </ion-label>
+            </ion-item>
+            <ion-item>
+              <ion-label>
+                <p>Lugar</p>
+                <h3>{{ s.places }}</h3>
+              </ion-label>
+            </ion-item>
+          </ion-list>
+          <ion-button expand="block" fill="outline" routerLink="/perfil">Editar mis respuestas</ion-button>
         </ion-card-content>
       </ion-card>
     }
-
-    <ion-card>
-      <ion-card-header>
-        <ion-card-title>Tu rutina</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        Armada según tu nivel, objetivo, el equipamiento de tu lugar y tus lesiones.
-        <ion-button class="ion-margin-top" expand="block" routerLink="/rutina">
-          Ver o generar mi rutina
-        </ion-button>
-      </ion-card-content>
-    </ion-card>
-
-    <ion-button expand="block" fill="outline" color="medium" (click)="logout()">
-      Cerrar sesión
-    </ion-button>
   </div>
 </ion-content>
+
+<app-tab-bar active="home"></app-tab-bar>

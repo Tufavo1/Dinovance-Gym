@@ -74,3 +74,59 @@ ion-radio::part(label) {
   color: var(--ion-color-medium);
   margin: 0 0 12px;
 }
+
+/* ---------------------------------------------------------------------------
+ * UX
+ * Fitts: objetivos táctiles grandes. Proximidad: lo relacionado va agrupado.
+ * ------------------------------------------------------------------------ */
+ion-button {
+  --border-radius: 12px;
+  min-height: 48px;
+  font-weight: 600;
+}
+
+ion-button[expand='block'] {
+  margin: 12px 0;
+}
+
+ion-checkbox,
+ion-radio {
+  --size: 26px;
+  min-height: 56px;
+  width: 100%;
+}
+
+ion-tab-button {
+  min-height: 56px;
+}
+
+.page ion-item {
+  --min-height: 56px;
+}
+
+/* Grupo de opciones: una "región común" visual para respuestas de una misma pregunta */
+ion-list.group {
+  margin: 0 0 8px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--ion-item-background, var(--ion-background-color));
+}
+
+/* Más espacio ENTRE preguntas, menos entre una pregunta y sus respuestas */
+.page .section-title {
+  margin: 28px 0 6px;
+}
+.page .section-title + .hint {
+  margin-top: 0;
+}
+.page .section-title:first-child {
+  margin-top: 8px;
+}
+
+.optional {
+  margin-top: 28px;
+}
+.optional ion-accordion ion-item[slot='header'] {
+  --background: transparent;
+  font-weight: 600;
+}

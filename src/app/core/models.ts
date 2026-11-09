@@ -168,6 +168,45 @@ export const STYLE_OPTIONS: Option[] = [
   { value: 'otro', label: 'Otro' },
 ];
 
+export const LAST_TRAINED_OPTIONS: Option[] = [
+  { value: 'actualmente', label: 'Entreno actualmente' },
+  { value: 'menos_1_mes', label: 'Paré hace menos de 1 mes' },
+  { value: 'entre_1_y_6_meses', label: 'Paré hace 1 a 6 meses' },
+  { value: 'mas_6_meses', label: 'Paré hace más de 6 meses' },
+  { value: 'nunca', label: 'Nunca he entrenado' },
+];
+
+export const PAST_ACTIVITY_OPTIONS: Option[] = [
+  { value: 'gimnasio', label: 'Pesas / gimnasio' },
+  { value: 'calistenia', label: 'Calistenia' },
+  { value: 'crossfit', label: 'Funcional / CrossFit' },
+  { value: 'running', label: 'Running' },
+  { value: 'futbol', label: 'Fútbol' },
+  { value: 'otros_deportes', label: 'Otros deportes' },
+  { value: 'clases', label: 'Clases grupales / baile / yoga' },
+  { value: 'ninguna', label: 'Ninguna' },
+];
+
+export const ACTIVITY_LEVEL_OPTIONS: Option[] = [
+  { value: 'sedentario', label: 'Sedentario', hint: 'Casi todo el día sentado/a.' },
+  { value: 'ligero', label: 'Poco activo', hint: 'Caminas algo, trabajo mayormente sentado/a.' },
+  { value: 'activo', label: 'Activo', hint: 'Estás de pie o caminando buena parte del día.' },
+  { value: 'muy_activo', label: 'Muy activo', hint: 'Trabajo físico o mucho movimiento diario.' },
+];
+
+export const SLEEP_OPTIONS: Option[] = [
+  { value: 'menos_5', label: 'Menos de 5 horas' },
+  { value: 'entre_5_y_6', label: '5 a 6 horas' },
+  { value: 'entre_7_y_8', label: '7 a 8 horas' },
+  { value: 'mas_8', label: 'Más de 8 horas' },
+];
+
+export const PREGNANCY_OPTIONS: Option[] = [
+  { value: 'no', label: 'No' },
+  { value: 'embarazada', label: 'Estoy embarazada' },
+  { value: 'posparto', label: 'Tuve un bebé hace menos de 12 meses' },
+];
+
 export const DAYS_OPTIONS: Option[] = [2, 3, 4, 5, 6].map((n) => ({
   value: String(n),
   label: `${n} días por semana`,
@@ -234,6 +273,11 @@ export interface HealthProfile {
   training_styles: string[];
   training_styles_other: string | null;
   place_equipment: Record<string, string[]>;
+  last_trained: string | null;
+  past_activities: string[];
+  activity_level: string | null;
+  sleep_hours: string | null;
+  pregnancy_status: string;
   has_medical_condition: boolean;
   medical_notes: string | null;
   consent_health_data: boolean;
@@ -252,6 +296,7 @@ export interface InjuryRecord {
 export interface Exercise {
   id: string;
   name: string;
+  name_es?: string | null;
   category: string | null;
   level: string | null;
   force_type: string | null;

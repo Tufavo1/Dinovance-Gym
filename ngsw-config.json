@@ -6,7 +6,13 @@
       "name": "app",
       "installMode": "prefetch",
       "resources": {
-        "files": ["/favicon.png", "/index.html", "/manifest.webmanifest", "/*.css", "/*.js"]
+        "files": [
+          "/favicon.png",
+          "/index.html",
+          "/manifest.webmanifest",
+          "/*.css",
+          "/*.js"
+        ]
       }
     },
     {
@@ -14,7 +20,24 @@
       "installMode": "lazy",
       "updateMode": "prefetch",
       "resources": {
-        "files": ["/assets/**", "/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2)"]
+        "files": [
+          "/assets/**",
+          "/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2)"
+        ]
+      }
+    }
+  ],
+  "dataGroups": [
+    {
+      "name": "exercise-images",
+      "urls": [
+        "https://raw.githubusercontent.com/yuhonas/free-exercise-db/**"
+      ],
+      "cacheConfig": {
+        "strategy": "performance",
+        "maxSize": 400,
+        "maxAge": "30d",
+        "timeout": "5s"
       }
     }
   ]

@@ -15,7 +15,8 @@ export default defineConfig({
   projects: [
     {
       name: 'Mobile Chrome',
-      use: { ...devices['Pixel 7'] },
+      // Usa el Chrome instalado en el equipo (no requiere `npx playwright install`).
+      use: { ...devices['Pixel 7'], channel: 'chrome' },
     },
   ],
   webServer: {

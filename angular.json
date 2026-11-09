@@ -43,7 +43,10 @@
                 "output": "/"
               }
             ],
-            "styles": ["src/global.scss", "src/theme/variables.scss"],
+            "styles": [
+              "src/global.scss",
+              "src/theme/variables.scss"
+            ],
             "scripts": [],
             "browser": "src/main.ts"
           },
@@ -57,8 +60,8 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "2kb",
-                  "maximumError": "4kb"
+                  "maximumWarning": "8kb",
+                  "maximumError": "10kb"
                 }
               ],
               "fileReplacements": [
@@ -68,7 +71,15 @@
                 }
               ],
               "outputHashing": "all",
-              "serviceWorker": "ngsw-config.json"
+              "serviceWorker": "ngsw-config.json",
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              }
             },
             "development": {
               "optimization": false,
@@ -78,6 +89,18 @@
             },
             "ci": {
               "progress": false
+            },
+            "local": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "namedChunks": true,
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.local.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"
@@ -93,6 +116,9 @@
             },
             "ci": {
               "progress": false
+            },
+            "local": {
+              "buildTarget": "app:build:local"
             }
           },
           "defaultConfiguration": "development"
@@ -108,7 +134,9 @@
           "options": {
             "buildTarget": "::development",
             "runnerConfig": "vitest.config.mts",
-            "setupFiles": ["src/test-setup.ts"],
+            "setupFiles": [
+              "src/test-setup.ts"
+            ],
             "tsConfig": "tsconfig.spec.json"
           }
         },

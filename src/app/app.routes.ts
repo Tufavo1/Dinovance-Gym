@@ -16,8 +16,14 @@ export const routes: Routes = [
   {
     path: 'onboarding',
     canActivate: [authGuard],
-    loadComponent: () =>
-      import('./pages/onboarding/onboarding.page').then((m) => m.OnboardingPage),
+    loadComponent: () => import('./pages/onboarding/onboarding.page').then((m) => m.OnboardingPage),
+  },
+  {
+    // Mismo cuestionario, con las respuestas guardadas para editarlas.
+    path: 'perfil',
+    canActivate: [authGuard, onboardedGuard],
+    data: { edit: true },
+    loadComponent: () => import('./pages/onboarding/onboarding.page').then((m) => m.OnboardingPage),
   },
   {
     path: 'home',
@@ -28,6 +34,28 @@ export const routes: Routes = [
     path: 'rutina',
     canActivate: [authGuard, onboardedGuard],
     loadComponent: () => import('./pages/routine/routine.page').then((m) => m.RoutinePage),
+  },
+  {
+    path: 'rutina/:id',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/routine/routine.page').then((m) => m.RoutinePage),
+  },
+  {
+    // Entrenamiento guiado de un día: ejercicio por ejercicio, con peso, series, RIR y descanso.
+    path: 'entrenar/:dayId',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/workout/workout.page').then((m) => m.WorkoutPage),
+  },
+  {
+    // Crear una rutina a mano: cuerpo interactivo, ejercicios recomendados y reglas que aconsejan.
+    path: 'crear-rutina',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/manual/manual.page').then((m) => m.ManualPage),
+  },
+  {
+    path: 'rutinas',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/routines/routines.page').then((m) => m.RoutinesPage),
   },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
   { path: '**', redirectTo: 'home' },

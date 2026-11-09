@@ -1,9 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import {
-  AbstractControl,
+  type AbstractControl,
   FormBuilder,
   ReactiveFormsModule,
-  ValidationErrors,
+  type ValidationErrors,
   Validators,
 } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -32,11 +32,17 @@ function ageBetween(min: number, max: number) {
     const now = new Date();
     let age = now.getFullYear() - born.getFullYear();
     const hadBirthday =
-      now.getMonth() > born.getMonth() ||
-      (now.getMonth() === born.getMonth() && now.getDate() >= born.getDate());
+      now.getMonth() > born.getMonth() || (now.getMonth() === born.getMonth() && now.getDate() >= born.getDate());
     if (!hadBirthday) age--;
     return age >= min && age <= max ? null : { age: { min, max } };
   };
+}
+
+/** Igual que en Supabase Auth (password_requirements = letters_digits). */
+function lettersAndDigits(control: AbstractControl): ValidationErrors | null {
+  const v = String(control.value ?? '');
+  if (!v) return null;
+  return /[A-Za-z]/.test(v) && /\d/.test(v) ? null : { weak: true };
 }
 
 function passwordsMatch(group: AbstractControl): ValidationErrors | null {
@@ -206,9 +212,7 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
           {{ busy() ? 'Creando cuenta...' : 'Crear cuenta' }}
         </ion-button>
 
-        <ion-button fill="clear" expand="block" routerLink="/login">
-          ¿Ya tienes cuenta? Inicia sesión
-        </ion-button>
+        <ion-button fill="clear" expand="block" routerLink="/login"> ¿Ya tienes cuenta? Inicia sesión </ion-button>
       </form>
     </ion-content>
   `,
@@ -234,7 +238,7 @@ export class RegisterPage {
       heightCm: ['', [Validators.required, Validators.min(80), Validators.max(250)]],
       country: ['Chile', [Validators.required]],
       email: ['', [Validators.required, Validators.email]],
-      password: ['', [Validators.required, Validators.minLength(8)]],
+      password: ['', [Validators.required, Validators.minLength(8), lettersAndDigits]],
       password2: ['', [Validators.required]],
     },
     { validators: passwordsMatch },
@@ -261,6 +265,7 @@ export class RegisterPage {
     if (e['max']) return `El valor máximo es ${e['max'].max}`;
     if (e['age']) return `La edad debe estar entre ${e['age'].min} y ${e['age'].max} años`;
     if (e['date']) return 'Fecha no válida';
+    if (e['weak']) return 'Usa letras y números';
     return 'Dato no válido';
   }
 

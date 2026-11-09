@@ -64,9 +64,7 @@ import { AuthService, translateAuthError } from '../../core/auth.service';
           {{ busy() ? 'Entrando...' : 'Entrar' }}
         </ion-button>
 
-        <ion-button fill="clear" expand="block" routerLink="/registro">
-          ¿No tienes cuenta? Regístrate
-        </ion-button>
+        <ion-button fill="clear" expand="block" routerLink="/registro"> ¿No tienes cuenta? Regístrate </ion-button>
       </form>
     </ion-content>
   `,

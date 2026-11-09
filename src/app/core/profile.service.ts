@@ -27,10 +27,7 @@ export class ProfileService {
     const [p, h, inj] = await Promise.all([
       this.sb.from('profiles').select('*').eq('id', uid).maybeSingle(),
       this.sb.from('health_profiles').select('*').eq('user_id', uid).maybeSingle(),
-      this.sb
-        .from('injury_records')
-        .select('id,body_area,kind,year,status,description')
-        .eq('user_id', uid),
+      this.sb.from('injury_records').select('id,body_area,kind,year,status,description').eq('user_id', uid),
     ]);
     if (p.error) throw p.error;
     if (h.error) throw h.error;
@@ -49,6 +46,7 @@ export class ProfileService {
       h.consent_health_data &&
       !!h.experience &&
       !!h.goal &&
+      !!h.last_trained &&
       (h.training_styles?.length ?? 0) > 0
     );
   }

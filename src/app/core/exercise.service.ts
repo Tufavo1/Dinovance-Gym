@@ -26,6 +26,16 @@ export class ExerciseService {
     return this.loading;
   }
 
+  /** Carga ejercicios desde la copia local (modo sin conexión) si el catálogo está vacío. */
+  seed(list: Exercise[]) {
+    if (this.exercises().length === 0) this.exercises.set(list);
+  }
+
+  /** Todas las imágenes del ejercicio (posición inicial y final). */
+  imageUrls(ex: Exercise | undefined): string[] {
+    return (ex?.images ?? []).map((i) => environment.exerciseImagesBaseUrl + i);
+  }
+
   imageUrl(ex: Exercise | undefined): string | null {
     const first = ex?.images?.[0];
     return first ? environment.exerciseImagesBaseUrl + first : null;
@@ -36,7 +46,7 @@ export class ExerciseService {
       this.sb
         .from('exercises')
         .select(
-          'id,name,category,level,force_type,mechanic,equipment,primary_muscles,secondary_muscles,instructions,images',
+          'id,name,name_es,category,level,force_type,mechanic,equipment,primary_muscles,secondary_muscles,instructions,images',
         )
         .range(0, 1999),
       this.sb.from('area_muscles').select('area,muscle,risk'),

@@ -1,0 +1,419 @@
+// Fitts: objetivos táctiles de 44 px o más. Proximidad: lo relacionado va junto.
+.center {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+// ---------- Barra de días (fija arriba) ----------
+.days-bar {
+  --min-height: 0;
+}
+.days {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 12px;
+  scrollbar-width: none;
+}
+.day-card {
+  flex: 0 0 auto;
+  min-width: 112px;
+  min-height: 64px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 2px solid var(--ion-color-light-shade);
+  background: var(--ion-background-color, #fff);
+  color: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  &.on {
+    border-color: var(--ion-color-primary);
+    background: color-mix(in srgb, var(--ion-color-primary) 10%, transparent);
+  }
+}
+.d-num {
+  font-weight: 700;
+}
+.d-name {
+  font-size: 0.8rem;
+  max-width: 130px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.d-meta {
+  font-size: 0.75rem;
+  color: var(--ion-color-medium);
+}
+.d-alert {
+  color: var(--ion-color-warning);
+  font-style: normal;
+  margin-left: 4px;
+}
+.mode-bar {
+  --min-height: 0;
+  padding: 0 12px 8px;
+}
+
+// ---------- Tus respuestas (una línea) ----------
+.me {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ion-color-light);
+  color: inherit;
+  text-align: left;
+  font-size: 0.9rem;
+}
+.me-detail {
+  padding: 8px 12px 0;
+  p {
+    margin: 4px 0;
+  }
+}
+.hurt-text {
+  color: var(--ion-color-danger);
+  font-weight: 600;
+}
+
+// ---------- Modo agregar ----------
+.ask {
+  text-align: center;
+  font-size: 1.2rem;
+  margin: 20px 0 8px;
+}
+.map-box {
+  border-radius: 16px;
+  background: var(--ion-color-light);
+  padding: 10px 8px 4px;
+}
+.view-seg {
+  max-width: 260px;
+  margin: 0 auto 8px;
+}
+.legend {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--ion-color-medium);
+}
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin: 0 3px 0 8px;
+  &.has {
+    background: var(--ion-color-success);
+  }
+  &.hurt {
+    background: var(--ion-color-danger-tint);
+  }
+}
+.or {
+  text-align: center;
+  color: var(--ion-color-medium);
+  margin: 16px 0 0;
+}
+.region {
+  font-weight: 700;
+  color: var(--ion-color-medium);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  margin: 14px 0 6px;
+}
+.parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.part-btn {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--ion-color-light-shade);
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  b {
+    background: var(--ion-color-success);
+    color: #fff;
+    border-radius: 999px;
+    padding: 0 7px;
+    font-size: 0.75rem;
+  }
+  &.has {
+    border-color: var(--ion-color-success);
+  }
+  &.hurt {
+    border-color: var(--ion-color-danger-tint);
+    color: var(--ion-color-danger);
+  }
+  &.sel {
+    background: var(--ion-color-primary);
+    border-color: var(--ion-color-primary);
+    color: var(--ion-color-primary-contrast);
+  }
+}
+
+// ---------- Modo mi día ----------
+.day-head {
+  margin: 12px 0 8px;
+}
+.day-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  h2 {
+    font-size: 1.15rem;
+    margin: 0;
+  }
+}
+.time {
+  font-size: 0.85rem;
+  color: var(--ion-color-medium);
+  &.over {
+    color: var(--ion-color-danger);
+  }
+}
+.time-track {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--ion-color-light-shade);
+  overflow: hidden;
+  margin: 6px 0 4px;
+}
+.time-fill {
+  height: 100%;
+  background: var(--ion-color-primary);
+  .over & {
+    background: var(--ion-color-danger);
+  }
+}
+.empty {
+  text-align: center;
+  padding: 32px 0;
+}
+.custom {
+  color: var(--ion-color-primary) !important;
+  font-size: 0.75rem !important;
+}
+ion-reorder {
+  min-width: 44px;
+  font-size: 1.4rem;
+}
+
+// ---------- Avisos ----------
+.warn {
+  border-left: 5px solid var(--ion-color-medium);
+  background: var(--ion-color-light);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  p {
+    margin: 0 0 6px;
+  }
+  &.medio {
+    border-color: var(--ion-color-warning);
+  }
+  &.alto {
+    border-color: var(--ion-color-danger);
+  }
+}
+.warn-inline {
+  color: var(--ion-color-warning-shade);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+// ---------- Hojas ----------
+.part-intro {
+  background: var(--ion-color-light);
+  border-radius: 12px;
+  padding: 10px 12px;
+  p {
+    margin: 2px 0;
+  }
+}
+.count {
+  font-weight: 600;
+  &.full {
+    color: var(--ion-color-danger);
+  }
+}
+.sec {
+  font-size: 1.05rem;
+  margin: 20px 0 6px;
+}
+.tips {
+  padding-left: 18px;
+  margin: 6px 0;
+  li {
+    margin: 4px 0;
+  }
+}
+.opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 8px;
+  margin: 8px 0;
+  border: 2px solid var(--ion-color-light-shade);
+  border-radius: 14px;
+  &.rec {
+    border-color: var(--ion-color-primary);
+  }
+  img {
+    width: 64px;
+    height: 48px;
+    object-fit: contain;
+    background: #fff;
+    border-radius: 8px;
+    flex: none;
+  }
+  span {
+    flex: 1;
+  }
+  small {
+    display: block;
+    color: var(--ion-color-medium);
+  }
+  ion-button {
+    min-height: 44px;
+    margin: 0;
+  }
+}
+.field {
+  display: grid;
+  grid-template-columns: 1fr 52px 76px 52px;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  ion-button {
+    height: 48px;
+    margin: 0;
+  }
+  strong {
+    text-align: center;
+    font-size: 1.4rem;
+  }
+}
+.edit-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+// ---------- Revisión ----------
+.gauge {
+  border-radius: 16px;
+  padding: 14px;
+  background: var(--ion-color-light);
+  text-align: center;
+  strong {
+    display: block;
+    font-size: 1.8rem;
+  }
+  small {
+    display: block;
+    margin-top: 6px;
+  }
+}
+.bars {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 6px;
+  i {
+    width: 40px;
+    height: 10px;
+    border-radius: 5px;
+    background: var(--ion-color-light-shade);
+    &.on {
+      background: var(--ion-color-primary);
+    }
+  }
+}
+.gauge[data-level='3'] .bars i.on {
+  background: var(--ion-color-warning);
+}
+.gauge[data-level='4'] .bars i.on {
+  background: var(--ion-color-danger);
+}
+.sum-day {
+  width: 100%;
+  min-height: 56px;
+  text-align: left;
+  padding: 10px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--ion-color-light-shade);
+  background: transparent;
+  color: inherit;
+  small {
+    display: block;
+    color: var(--ion-color-medium);
+  }
+}
+.vol {
+  display: grid;
+  grid-template-columns: 110px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  strong {
+    text-align: right;
+  }
+}
+.track {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--ion-color-light-shade);
+  overflow: hidden;
+}
+.fill {
+  height: 100%;
+  background: var(--ion-color-success);
+  &.bajo {
+    background: var(--ion-color-warning);
+  }
+  &.alto {
+    background: var(--ion-color-danger);
+  }
+}
+
+// ---------- Barra inferior ----------
+.actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px;
+  max-width: 480px;
+  margin: 0 auto;
+  .main {
+    flex: 1;
+    margin: 0;
+    min-height: 52px;
+  }
+}
+
+// Los <button> nativos no heredan la tipografía: se fuerza para que se lea igual que el resto.
+.day-card,
+.me,
+.part-btn,
+.sum-day {
+  font: inherit;
+}
+.sum-day strong {
+  font-size: 1rem;
+}

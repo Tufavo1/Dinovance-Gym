@@ -25,6 +25,9 @@ export const GEAR_OPTIONS: GearOption[] = [
     label: 'Máquinas de cardio (trotadora, bicicleta, elíptica)',
     group: 'Máquinas y cardio',
   },
+  { value: 'hip_thrust', label: 'Máquina de hip thrust (glúteos)', group: 'Máquinas y cardio' },
+  { value: 'dominadas_asistidas', label: 'Dominadas / fondos asistidos', group: 'Máquinas y cardio' },
+  { value: 'multifuncional', label: 'Estación multifuncional', group: 'Máquinas y cardio' },
   { value: 'barra_dominadas', label: 'Barra de dominadas', group: 'Calistenia' },
   { value: 'paralelas', label: 'Paralelas / barras de fondos', group: 'Calistenia' },
   { value: 'bandas', label: 'Bandas elásticas', group: 'Accesorios' },
@@ -33,20 +36,36 @@ export const GEAR_OPTIONS: GearOption[] = [
   { value: 'foam_roller', label: 'Rodillo de espuma', group: 'Accesorios' },
 ];
 
-export const GEAR_GROUPS = ['Pesas libres', 'Máquinas y cardio', 'Calistenia', 'Accesorios'].map(
-  (name) => ({ name, items: GEAR_OPTIONS.filter((g) => g.group === name) }),
-);
+export const GEAR_GROUPS = ['Pesas libres', 'Máquinas y cardio', 'Calistenia', 'Accesorios'].map((name) => ({
+  name,
+  items: GEAR_OPTIONS.filter((g) => g.group === name),
+}));
 
 /**
- * Equipo marcado de partida por lugar. Smart Fit informa en sus sedes: zona de peso libre
- * (mancuernas, barras, discos, bancos y racks), peso integrado (máquinas guiadas), poleas,
- * máquina Smith (según sede) y cardio. NO se asume plataforma de halterofilia, kettlebells
- * ni accesorios, porque no están confirmados. Cada persona ajusta según su sede.
+ * Smart Fit no publica un listado de máquinas (su web solo muestra zonas: cardio, peso integrado,
+ * peso libre). Este equipo lo confirmó el dueño del proyecto: trotadora con inclinación, escaladora,
+ * spinning, máquinas de bíceps/tríceps, mancuernas, Smith, semi jaula, barras olímpicas, banca plana
+ * e inclinable, poleas, dominadas asistidas, multifuncional, hip thrust y prensas de piernas.
+ * NO se asume plataforma de halterofilia, kettlebells ni accesorios.
  */
+const SMARTFIT_PRESET = [
+  'barra',
+  'mancuernas',
+  'banco',
+  'rack',
+  'smith',
+  'poleas',
+  'maquinas',
+  'cardio',
+  'hip_thrust',
+  'dominadas_asistidas',
+  'multifuncional',
+  'barra_dominadas',
+];
 const GYM_PRESET = ['barra', 'mancuernas', 'banco', 'rack', 'smith', 'poleas', 'maquinas', 'cardio'];
 
 export const PLACE_PRESETS: Record<string, string[]> = {
-  smartfit: GYM_PRESET,
+  smartfit: SMARTFIT_PRESET,
   otro_gimnasio: GYM_PRESET,
   plaza: [],
   casa: [],

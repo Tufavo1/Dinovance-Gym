@@ -2,3 +2,31 @@ ion-card {
   margin-left: 0;
   margin-right: 0;
 }
+
+ion-card ion-item {
+  --padding-start: 0;
+  --background: transparent;
+}
+
+.cta p {
+  margin-bottom: 8px;
+}
+
+.week {
+  margin: 20px 0;
+}
+
+.week-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.week ion-progress-bar {
+  height: 10px;
+  border-radius: 6px;
+}
+
+.week .hint {
+  margin-top: 8px;
+}
