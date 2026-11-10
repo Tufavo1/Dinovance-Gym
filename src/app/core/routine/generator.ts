@@ -2,6 +2,7 @@ import { CALISTHENICS_GEAR, requiredGear } from '../equipment';
 import {
   BODY_AREA_OPTIONS,
   FOCUS_OPTIONS,
+  FREQUENCY_GROUPS,
   GOAL_OPTIONS,
   labelOf,
   type AreaMuscle,
@@ -10,6 +11,7 @@ import {
   type HealthProfile,
   type InjuryRecord,
 } from '../models';
+import { LENGTHENED_BIAS, proteinTarget, weeklyRange } from '../evidence/programming';
 import { buildAthleteProfile, type AthleteProfile } from './athlete-profile';
 import { KNOWN_NAMES } from './exercise-names';
 import { cardioMinutes, estimateMinutes, prescribe } from './prescription';
@@ -36,6 +38,7 @@ import {
   splitFor,
   type Slot,
 } from './rules';
+import { FREQUENCY_MUSCLES, bigGroupFrequency } from '../training/benchmarks';
 
 /**
  * Generador de rutinas por REGLAS (sin IA), determinista para un mismo "seed".
@@ -60,6 +63,8 @@ export interface GeneratorInput {
   gender?: string | null;
   /** Ejercicios que la persona marcó como "no me gusta": nunca se proponen. */
   avoid?: string[];
+  /** Peso corporal (kg), para recomendar la proteína diaria. */
+  weightKg?: number | null;
   seed: string;
 }
 
@@ -90,7 +95,6 @@ export interface GeneratedRoutine {
 
 const WARMUP_MINUTES = 5;
 const MIN_EXERCISES = 4;
-const MAX_EXERCISES = 10;
 const GYMS = new Set(['smartfit', 'otro_gimnasio']);
 
 function hash(s: string): number {
@@ -152,7 +156,7 @@ function adapt(ex: Exercise, gear: Set<string>): { ex: Exercise; note: string | 
  */
 function buildContext(input: GeneratorInput) {
   // ---- 1. Perfil del atleta ----
-  const p = buildAthleteProfile(input.health, input.injuries, input.age, input.gender ?? null);
+  const p = buildAthleteProfile(input.health, input.injuries, input.age, input.gender ?? null, input.weightKg ?? null);
   const { goals, styles } = p;
 
   // ---- 2. Equipamiento efectivo ----
@@ -302,6 +306,18 @@ export function findAlternatives(
     .map(({ e }) => ({ exercise: e, item: itemFor(e, ctx.p, ctx.exerciseNote).item }));
 }
 
+/** Ids de ejercicios que sirven a esta persona (equipo, nivel, salud y preferencias). */
+export function allowedExerciseIds(input: GeneratorInput): Set<string> {
+  const ctx = buildContext(input);
+  return new Set([...ctx.mainPool, ...ctx.stretchPool, ...ctx.cardioPool].map((e) => e.id));
+}
+
+/** Prescripción recomendada para un ejercicio que la persona agrega a mano. */
+export function prescriptionFor(input: GeneratorInput, ex: Exercise): { item: GeneratedExercise; minutes: number } {
+  const ctx = buildContext(input);
+  return itemFor(ex, ctx.p, ctx.exerciseNote);
+}
+
 export interface MuscleOption {
   exercise: Exercise;
   /** Prescripción recomendada según el perfil (la persona puede cambiarla). */
@@ -322,6 +338,7 @@ export function exercisesForMuscle(input: GeneratorInput, muscle: string): Muscl
       let score = 0;
       if (STAPLES.has(e.name)) score += 3;
       if (KNOWN_NAMES.has(e.name)) score += 1;
+      if (LENGTHENED_BIAS.test(e.name)) score += 0.8;
       if (e.primary_muscles[0] === muscle) score += 1;
       if (ctx.p.beginner && (e.equipment === 'machine' || e.equipment === 'cable')) score += 0.6;
       if (e.mechanic === 'compound') score += 0.5;
@@ -400,6 +417,8 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
       if (!used.has(ex.id)) score += 1.5;
       if (STAPLES.has(ex.name)) score += 4;
       if (KNOWN_NAMES.has(ex.name)) score += 0.5;
+      // Tensión en posición alargada (Maeo, Wolf, Nippard): mejor estímulo por serie.
+      if (LENGTHENED_BIAS.test(ex.name)) score += 0.8;
       // Con pesas disponibles, el peso corporal queda para el core y la calistenia.
       const bodyOnly = !ex.equipment || ex.equipment === 'body only';
       if (bodyOnly && !bodyweightOnly && gear.size > 2 && !slot.includes('abdominals') && !exerciseNote.has(ex.id)) {
@@ -449,7 +468,7 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
 
   const buildDay = (
     key: string,
-  ): { name: string; items: GeneratedExercise[]; minutes: number; main: number; compounds: number } => {
+  ): { name: string; items: GeneratedExercise[]; minutes: number; raw: number; main: number; compounds: number } => {
     const tpl = TEMPLATES[key];
     const dayUsed = new Set<string>();
     const dayPatterns = new Set<string>();
@@ -467,7 +486,7 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
     const extra = focusSlots.filter((s) => s.some(dayHas)).slice(0, genderFocus.length > 0 ? 1 : 2);
     const slots = [...tpl.slots.slice(0, 4), ...extra, ...tpl.slots.slice(4)];
 
-    for (let i = 0; i < slots.length && items.length < MAX_EXERCISES; i++) {
+    for (let i = 0; i < slots.length && items.length < p.programme.maxExercises; i++) {
       const slot = slots[i];
       const ex = pick(slot, i, dayUsed, dayPatterns, plyo < 2, tpl.force);
       if (!ex) {
@@ -510,7 +529,7 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
       minutes += m;
     }
 
-    return { name: tpl.name, items, minutes: Math.round(minutes / 5) * 5, main, compounds };
+    return { name: tpl.name, items, minutes: Math.round(minutes / 5) * 5, raw: minutes, main, compounds };
   };
 
   const buildWeek = (split: string[]) => {
@@ -524,14 +543,89 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
 
   // Si una lesión deja algún día dividido casi vacío (por ejemplo "empuje" con el hombro
   // lesionado), se usa cuerpo completo: reparte lo que sí se puede hacer en todos los días.
-  let week = buildWeek(splitFor(p.daysPerWeek, p.rank));
+  let week = buildWeek(splitFor(p.daysPerWeek, p.rank, bigGroupFrequency(p.frequency.target)));
   // Un día sin ningún ejercicio compuesto (solo aislados) tampoco sirve como sesión principal.
   const thin = [...week.built.values()].some((d) => d.main < MIN_EXERCISES || d.compounds === 0);
   const isFullBody = week.split.every((k) => k.startsWith('FULL'));
   if (thin && !isFullBody) {
     week = buildWeek(Array.from({ length: p.daysPerWeek }, (_, i) => (i % 2 === 0 ? 'FULL_A' : 'FULL_B')));
-    notes.add('Por tu lesión, la rutina es de cuerpo completo: así cada día tiene suficientes ejercicios seguros.');
+    notes.add('Por tu lesión: cuerpo completo, con ejercicios seguros.');
   }
+
+  // ---- Ajuste de volumen semanal por músculo (Schoenfeld 2017; Israetel MEV a MRV) ----
+  const exMap = new Map(input.exercises.map((e) => [e.id, e]));
+  const isTimed = (it: GeneratedExercise) => it.reps_min === 1 && it.reps_max === 1;
+  const weeklySetsOf = () => {
+    const tot = new Map<string, number>();
+    for (const key of week.split) {
+      for (const it of week.built.get(key)!.items) {
+        const m = exMap.get(it.exercise_id)?.primary_muscles[0];
+        if (m && !isTimed(it)) tot.set(m, (tot.get(m) ?? 0) + it.sets);
+      }
+    }
+    return tot;
+  };
+  const lowerBound = (m: string) => weeklyRange(m, p.programme)?.[0] ?? 0;
+  const upperBound = (m: string) => weeklyRange(m, p.programme)?.[1] ?? 99;
+  for (let guard = 0; guard < 40; guard++) {
+    const now = weeklySetsOf();
+    const lacking = [...now.entries()].find(([m, n]) => n < lowerBound(m));
+    if (!lacking) break;
+    let done = false;
+    for (const day of new Set(week.split.map((k) => week.built.get(k)!))) {
+      const it = day.items.find((x) => {
+        const ex = exMap.get(x.exercise_id);
+        return ex?.primary_muscles[0] === lacking[0] && !isTimed(x) && x.sets < p.programme.maxSetsPerExercise;
+      });
+      if (!it) continue;
+      const extra = (it.reps_max * 3.5 + it.rest_seconds) / 60;
+      if (day.raw + extra > p.minutes) continue;
+      it.sets += 1;
+      day.raw += extra;
+      done = true;
+      break;
+    }
+    if (!done) break;
+  }
+  for (let guard = 0; guard < 40; guard++) {
+    const now = weeklySetsOf();
+    const over = [...now.entries()].find(([m, n]) => n > upperBound(m));
+    if (!over) break;
+    let done = false;
+    for (const day of new Set(week.split.map((k) => week.built.get(k)!))) {
+      const it = day.items.find(
+        (x) => exMap.get(x.exercise_id)?.primary_muscles[0] === over[0] && !isTimed(x) && x.sets > 2,
+      );
+      if (!it) continue;
+      it.sets -= 1;
+      day.raw -= (it.reps_max * 3.5 + it.rest_seconds) / 60;
+      done = true;
+      break;
+    }
+    if (!done) break;
+  }
+  for (const d of week.built.values()) d.minutes = Math.round(d.raw / 5) * 5;
+
+  // ---- Marcas de fuerza y frecuencia pedida ----
+  if (p.strength) {
+    notes.add(
+      `Tus marcas indican nivel ${['principiante', 'intermedio', 'avanzado'][p.strength.rank]}: las cargas parten de ahí.`,
+    );
+  }
+  for (const g of p.frequency.raised) {
+    notes.add(`${labelOf(FREQUENCY_GROUPS, g)}: subimos de 1× a 2× por semana, rinde más.`);
+  }
+  const shortOf: string[] = [];
+  for (const [g, want] of Object.entries(p.frequency.target)) {
+    const muscles = FREQUENCY_MUSCLES[g] ?? [];
+    const got = week.split.filter((k) =>
+      week.built
+        .get(k)!
+        .items.some((it) => !isTimed(it) && muscles.includes(exMap.get(it.exercise_id)?.primary_muscles[0] ?? '')),
+    ).length;
+    if (got < want) shortOf.push(`${labelOf(FREQUENCY_GROUPS, g).toLowerCase()} ${got}× (pediste ${want}×)`);
+  }
+  if (shortOf.length > 0) notes.add(`Con tus ${p.daysPerWeek} días quedó: ${shortOf.join(', ')}.`);
 
   const days: GeneratedDay[] = week.split.map((key, d) => {
     const day = week.built.get(key)!;
@@ -547,93 +641,100 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
   const labelArea = (a: string) => labelOf(BODY_AREA_OPTIONS, a).toLowerCase();
 
   if (p.pregnant) {
-    notes.add(
-      'Estás embarazada: evitamos ejercicios boca arriba/abajo, impacto y presión abdominal. Tu matrona o médico debe aprobar esta rutina.',
-    );
+    notes.add('Embarazo: sin impacto ni presión abdominal. Que tu médico la apruebe.');
   } else if (p.postpartum) {
-    notes.add(
-      'Tuviste un bebé hace poco: evitamos el abdomen intenso y el impacto. Pide autorización a tu médico o matrona antes de empezar.',
-    );
+    notes.add('Posparto: sin abdomen intenso ni impacto. Pide el visto bueno médico.');
   }
   if (input.health.has_medical_condition) {
-    notes.add('Indicaste una condición médica: consulta a tu médico antes de empezar y evita la alta intensidad.');
+    notes.add('Condición médica: consulta a tu médico antes de empezar.');
   } else if (p.senior) {
-    notes.add('Ajustamos la rutina a tu edad: sin alto impacto ni técnica muy exigente.');
+    notes.add('Ajustada a tu edad: sin impacto fuerte.');
   }
   if (p.activeInjuryAreas.size > 0) {
-    notes.add(
-      `Excluimos ejercicios que cargan: ${[...p.activeInjuryAreas].map(labelArea).join(', ')}. Igual consulta a tu kinesiólogo o médico.`,
-    );
+    notes.add(`Sin ejercicios que carguen: ${[...p.activeInjuryAreas].map(labelArea).join(', ')}.`);
   }
   if (p.recoveredSurgeries > 0) {
-    notes.add('Tienes cirugías ya recuperadas: parte con cargas bajas y avanza de a poco.');
+    notes.add('Cirugías previas: empieza con cargas bajas.');
   }
   if (p.longLayoff) {
-    notes.add('Llevas más de 6 meses sin entrenar: partimos como principiante y subirás de nivel de a poco.');
+    notes.add('Más de 6 meses sin entrenar: partes como principiante.');
   } else if (p.midLayoff) {
-    notes.add('Pasó un tiempo desde que entrenaste: limitamos la dificultad al inicio.');
+    notes.add('Hace un tiempo sin entrenar: empiezas suave.');
   } else if (goals.includes('retomar')) {
-    notes.add('Como retomas el ejercicio, usamos ejercicios básicos con cargas bajas. Detente si sientes dolor.');
+    notes.add('Retomas: ejercicios básicos y poco peso.');
   }
   if (p.starterVolume) {
-    notes.add('Las primeras 2 semanas hacemos 2 series por ejercicio para que tu cuerpo se adapte. Luego sube a 3.');
+    notes.add('Primeras 2 semanas: 2 series. Luego 3.');
   }
   if (p.poorSleep) {
-    notes.add('Duermes poco: bajamos un poco el volumen. Dormir 7 a 8 horas mejora mucho tus resultados.');
+    notes.add('Duermes poco: menos series. Dormir 7-8 h ayuda mucho.');
   }
   if (p.sedentary && p.beginner) {
-    notes.add('Vienes de una vida sedentaria: suma caminatas diarias y aumenta la intensidad gradualmente.');
-  }
-  if (p.beginner) {
-    notes.add(
-      'Elige un peso con el que termines cada serie sintiendo que podrías hacer 2 o 3 repeticiones más. La técnica va primero.',
-    );
+    notes.add('Camina a diario y sube la intensidad de a poco.');
   }
   if (!stretchOnly) {
-    notes.add('Antes de empezar: 5 minutos de cardio suave y 1 serie liviana del primer ejercicio.');
-    notes.add('Cuando logres el máximo de repeticiones en todas las series, sube un poco el peso la siguiente vez.');
+    const [r0, r1] = p.programme.rir;
+    notes.add(
+      r0 === 0
+        ? `Termina cada serie cerca del fallo (máx. ${r1} reps en reserva).`
+        : `Termina cada serie con ${r0}-${r1} reps en reserva; la técnica va primero.`,
+    );
+    notes.add('Calienta: 5 min de cardio suave y 1 serie liviana.');
+    notes.add('Cuando completes todas las reps, sube un poco el peso.');
+    const weeks = p.programme.mesocycleWeeks;
+    notes.add(`Semana ${weeks + 1}: descarga con la mitad de series.`);
+  }
+  if (p.programme.approach === 'alta_intensidad') {
+    notes.add('Pocas series muy exigentes y descansos largos entre días.');
+    if (input.health.days_per_week && input.health.days_per_week > p.programme.maxDays) {
+      notes.add(`Con este enfoque bastan ${p.programme.maxDays} días.`);
+    }
+  } else if (p.programme.approach === 'alto_volumen') {
+    notes.add('Alto volumen: si no te recuperas, baja una serie.');
+  }
+  if (p.highStress) {
+    notes.add('Estrés alto: menos series para que te recuperes.');
+  }
+  const protein = proteinTarget(input.weightKg ?? null, input.health.nutrition_phase);
+  if (protein) {
+    notes.add(`Proteína al día: ${protein[0]}-${protein[1]} g.`);
+  }
+  if (wantsCardio && !stretchOnly) {
+    notes.add('Cardio después de las pesas, a ritmo moderado.');
   }
   if (styles.includes('no_se')) {
-    notes.add('Como no elegiste una modalidad, armamos una rutina de musculación básica para partir.');
+    notes.add('Rutina básica de musculación para partir.');
   }
   if (styles.includes('halterofilia')) {
     notes.add(
       gear.has('plataforma')
-        ? 'La halterofilia requiere mucha técnica: aprende con un entrenador antes de cargar peso.'
-        : 'Elegiste halterofilia, pero este lugar no tiene plataforma. Incluimos fuerza base; los levantamientos olímpicos requieren plataforma y entrenador.',
+        ? 'Halterofilia: aprende la técnica con un entrenador.'
+        : 'Sin plataforma: solo fuerza base, no levantamientos olímpicos.',
     );
   }
   if (goals.includes('postura')) {
-    notes.add('Reforzamos espalda y abdomen y sumamos estiramientos para ayudar a tu postura.');
+    notes.add('Más espalda, abdomen y estiramientos para tu postura.');
   }
   if (genderFocus.length > 0) {
-    notes.add(
-      `Como no elegiste una zona a priorizar, dimos un poco más de trabajo a: ${genderFocus.map((a) => labelOf(FOCUS_OPTIONS, a).toLowerCase()).join(', ')}. Puedes cambiarlo en "Mis respuestas".`,
-    );
+    notes.add(`Más trabajo en: ${genderFocus.map((a) => labelOf(FOCUS_OPTIONS, a).toLowerCase()).join(', ')}.`);
   } else if (focusAreas.size > 0) {
-    notes.add(
-      `Dimos más trabajo a: ${[...focusAreas].map((a) => labelOf(FOCUS_OPTIONS, a).toLowerCase()).join(', ')}.`,
-    );
+    notes.add(`Más trabajo en: ${[...focusAreas].map((a) => labelOf(FOCUS_OPTIONS, a).toLowerCase()).join(', ')}.`);
   }
   if (wantsCardio && cardioPool.length === 0) {
-    notes.add('Para cardio en este lugar, suma 15 a 20 minutos de caminata rápida al final de cada sesión.');
+    notes.add('Cardio: 15-20 min de caminata rápida al final.');
   }
   if (GYMS.has(input.place)) {
-    notes.add('Si alguna máquina no está disponible en tu sede, pide al profesor de sala un reemplazo equivalente.');
+    notes.add('Si falta una máquina, pide un reemplazo al profesor.');
   }
   if (gear.size === 0 && !stretchOnly) {
-    notes.add(
-      'No hay equipamiento en este lugar: usamos ejercicios con tu peso corporal. Unas bandas elásticas te darían muchas más opciones, sobre todo para la espalda.',
-    );
+    notes.add('Sin equipo: ejercicios con tu peso. Unas bandas ayudan mucho.');
   }
   const missing = [...unavailable].filter((m) => !trainedMuscles.has(m) && !MINOR_MUSCLES.has(m));
   if (missing.length > 0) {
-    notes.add(
-      `Con tu equipamiento y tu salud no encontramos ejercicios seguros para: ${missing.map((m) => MUSCLE_ES[m] ?? m).join(', ')}. Un profesor puede sugerirte alternativas.`,
-    );
+    notes.add(`Sin ejercicios seguros para: ${missing.map((m) => MUSCLE_ES[m] ?? m).join(', ')}.`);
   }
   if (days.every((d) => d.exercises.length === 0)) {
-    notes.add('No se pudo armar la rutina con los datos actuales. Revisa el equipamiento y tus lesiones.');
+    notes.add('No se pudo armar la rutina. Revisa tu equipo y lesiones.');
   }
 
   return {

@@ -366,19 +366,28 @@ export const FOCUS_SLOTS: Record<string, string[]> = {
   piernas: ['quadriceps', 'hamstrings'],
 };
 
-/** Distribución semanal según días disponibles y nivel. */
-export function splitFor(days: number, rank: number): string[] {
+/**
+ * Distribución semanal según días disponibles, nivel y, si la persona la pidió, la frecuencia
+ * deseada por músculo (`freq`: veces por semana de los grupos grandes, 2 a 4).
+ */
+export function splitFor(days: number, rank: number, freq: number | null = null): string[] {
+  const high = freq !== null && freq >= 2.5;
   switch (days) {
     case 2:
       return ['FULL_A', 'FULL_B'];
     case 3:
-      return rank === 0 ? ['FULL_A', 'FULL_B', 'FULL_A'] : ['PUSH', 'PULL', 'LEGS'];
+      // Cada músculo 2 veces por semana o más (Schoenfeld 2016): cuerpo completo, también con experiencia.
+      return ['FULL_A', 'FULL_B', 'FULL_A'];
     case 4:
-      return ['UPPER', 'LOWER', 'UPPER', 'LOWER'];
+      return high ? ['UPPER', 'LOWER', 'FULL_A', 'FULL_B'] : ['UPPER', 'LOWER', 'UPPER', 'LOWER'];
     case 5:
-      return rank === 0 ? ['UPPER', 'LOWER', 'FULL_A', 'UPPER', 'LOWER'] : ['PUSH', 'PULL', 'LEGS', 'UPPER', 'LOWER'];
+      return rank === 0 || high
+        ? ['UPPER', 'LOWER', 'FULL_A', 'UPPER', 'LOWER']
+        : ['PUSH', 'PULL', 'LEGS', 'UPPER', 'LOWER'];
     default:
-      return ['PUSH', 'PULL', 'LEGS', 'PUSH', 'PULL', 'LEGS'];
+      return high
+        ? ['PUSH', 'PULL', 'LEGS', 'UPPER', 'LOWER', 'FULL_A']
+        : ['PUSH', 'PULL', 'LEGS', 'PUSH', 'PULL', 'LEGS'];
   }
 }
 

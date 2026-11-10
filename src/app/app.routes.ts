@@ -57,6 +57,21 @@ export const routes: Routes = [
     canActivate: [authGuard, onboardedGuard],
     loadComponent: () => import('./pages/routines/routines.page').then((m) => m.RoutinesPage),
   },
+  {
+    path: 'progreso',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/progress/progress.page').then((m) => m.ProgressPage),
+  },
+  {
+    path: 'mensajes',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/messages/messages.page').then((m) => m.MessagesPage),
+  },
+  {
+    path: 'ciencia',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/science/science.page').then((m) => m.SciencePage),
+  },
   { path: '', redirectTo: 'home', pathMatch: 'full' },
   { path: '**', redirectTo: 'home' },
 ];

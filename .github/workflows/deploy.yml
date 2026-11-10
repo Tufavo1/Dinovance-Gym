@@ -1,0 +1,78 @@
+name: Deploy a Cloudflare
+
+# Publica en producción cada vez que main cambia (o a mano desde la pestaña Actions).
+# Antes de publicar vuelve a pasar lint, pruebas y build, aplica las migraciones pendientes de Supabase
+# y recién entonces despliega; si algo falla, no se publica.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un despliegue a la vez; uno nuevo espera al que está corriendo.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build y despliegue
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.SITE_URL || 'https://avanza.dinovance.cl' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Pruebas unitarias
+        run: npx ng test --no-watch
+
+      - name: Build de producción
+        run: npx ng build
+
+      # Antes de publicar la app: las migraciones solo agregan columnas, tablas y funciones, así que la
+      # versión anterior sigue funcionando mientras se despliega la nueva. Si una migración falla,
+      # no se despliega nada.
+      - name: Migrar la base de datos (Supabase)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql --version
+          scripts/migrate.sh --dry-run
+          scripts/migrate.sh
+
+      - name: Desplegar con Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+
+      - name: Prueba rápida del sitio publicado
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://avanza.dinovance.cl' }}
+        run: |
+          set -euo pipefail
+          sleep 10
+          code=$(curl -s -o /dev/null -w "%{http_code}" "$SITE_URL/")
+          echo "HTTP $code en $SITE_URL"
+          test "$code" = "200"
+          headers=$(curl -sI "$SITE_URL/")
+          for h in content-security-policy strict-transport-security x-frame-options x-content-type-options; do
+            echo "$headers" | grep -qi "^$h:" || { echo "Falta la cabecera $h" >&2; exit 1; }
+          done
+          curl -sI "$SITE_URL/ngsw.json" | grep -qi "cache-control: no-cache" || { echo "ngsw.json debe ser no-cache" >&2; exit 1; }
+          echo "Sitio publicado y con sus cabeceras de seguridad."

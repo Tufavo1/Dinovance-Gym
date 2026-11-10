@@ -85,6 +85,17 @@ export class ProfileService {
     await this.load(true);
   }
 
+  /** Guarda el equipo disponible de un lugar sin tocar el resto del cuestionario. */
+  async saveEquipment(place: string, gear: string[]): Promise<void> {
+    const uid = this.auth.user()?.id;
+    const h = this.health();
+    if (!uid || !h) throw new Error('Sin perfil');
+    const next = { ...(h.place_equipment ?? {}), [place]: gear };
+    const { error } = await this.sb.from('health_profiles').update({ place_equipment: next }).eq('user_id', uid);
+    if (error) throw error;
+    this.health.set({ ...h, place_equipment: next });
+  }
+
   reset(): void {
     this.profile.set(null);
     this.health.set(null);

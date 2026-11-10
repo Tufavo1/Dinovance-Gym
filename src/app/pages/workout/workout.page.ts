@@ -17,13 +17,34 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { add, chevronBack, chevronForward, close, pause, play, remove, swapHorizontal } from 'ionicons/icons';
+import {
+  add,
+  arrowForwardOutline,
+  barbellOutline,
+  checkmark,
+  checkmarkCircleOutline,
+  chevronBack,
+  chevronForward,
+  close,
+  flagOutline,
+  happy,
+  happyOutline,
+  locationOutline,
+  pause,
+  play,
+  remove,
+  removeCircleOutline,
+  sad,
+  sadOutline,
+  swapHorizontal,
+} from 'ionicons/icons';
 
 import { ExerciseService } from '../../core/exercise.service';
 import { localStore } from '../../core/local-store';
 import type { Exercise } from '../../core/models';
 import { ProfileService } from '../../core/profile.service';
 import { buildAthleteProfile } from '../../core/routine/athlete-profile';
+import { ExerciseFactsComponent } from '../../shared/exercise-facts.component';
 import { exerciseName } from '../../core/routine/exercise-names';
 import {
   RoutineService,
@@ -37,7 +58,6 @@ import type { Alternative } from '../../core/routine/generator';
 import {
   adjustAfterSet,
   adviseLoad,
-  rirTarget,
   type LoadAdvice,
   type LoadAthlete,
   type LoadHistoryEntry,
@@ -85,16 +105,17 @@ const SRPE_LABELS: Record<number, string> = {
 };
 
 const GUIDE_OPTIONS = [
-  { value: 1, emoji: '😣', label: 'Mala' },
-  { value: 2, emoji: '🙁', label: 'Regular' },
-  { value: 3, emoji: '😐', label: 'Normal' },
-  { value: 4, emoji: '🙂', label: 'Buena' },
-  { value: 5, emoji: '😄', label: 'Excelente' },
+  { value: 1, icon: 'sad', label: 'Mala' },
+  { value: 2, icon: 'sad-outline', label: 'Regular' },
+  { value: 3, icon: 'remove-circle-outline', label: 'Normal' },
+  { value: 4, icon: 'happy-outline', label: 'Buena' },
+  { value: 5, icon: 'happy', label: 'Excelente' },
 ];
 
 @Component({
   selector: 'app-workout',
   imports: [
+    ExerciseFactsComponent,
     IonHeader,
     IonToolbar,
     IonTitle,
@@ -169,20 +190,24 @@ const GUIDE_OPTIONS = [
               </ion-button>
 
               <section class="goal">
-                <p class="goal-title">🎯 Tu objetivo</p>
+                <p class="goal-title"><ion-icon name="flag-outline" aria-hidden="true"></ion-icon> Tu objetivo</p>
                 @for (line of c.objective; track line) {
                   <p class="goal-line">{{ line }}</p>
                 }
               </section>
 
-              <p class="block-title">📍 Cómo colocarte</p>
+              <app-exercise-facts [exercise]="c.ex"></app-exercise-facts>
+
+              <p class="block-title"><ion-icon name="location-outline" aria-hidden="true"></ion-icon> Cómo colocarte</p>
               <ul class="cues">
                 @for (cue of c.setup; track cue) {
                   <li>{{ cue }}</li>
                 }
               </ul>
 
-              <p class="block-title">✅ Cómo hacerlo</p>
+              <p class="block-title">
+                <ion-icon name="checkmark-circle-outline" aria-hidden="true"></ion-icon> Cómo hacerlo
+              </p>
               <ul class="cues">
                 @for (cue of c.cues; track cue) {
                   <li>{{ cue }}</li>
@@ -191,7 +216,9 @@ const GUIDE_OPTIONS = [
 
               @if (c.advice.kg !== null) {
                 <section class="load">
-                  <p class="block-title">🏋️ {{ loadLabel(c.advice) }}</p>
+                  <p class="block-title">
+                    <ion-icon name="barbell-outline" aria-hidden="true"></ion-icon> {{ loadLabel(c.advice) }}
+                  </p>
                   <div class="stepper">
                     <ion-button fill="outline" (click)="bumpWeight(-c.advice.step)" aria-label="Menos peso">
                       <ion-icon slot="icon-only" name="remove"></ion-icon>
@@ -214,16 +241,18 @@ const GUIDE_OPTIONS = [
 
               @if (doneSetsFor(c.item.exercise_id); as done) {
                 <p class="todo">
-                  ✔ Ya hiciste {{ done }} de {{ c.item.sets }} series de este ejercicio.
+                  <ion-icon name="checkmark" aria-hidden="true"></ion-icon> Ya hiciste {{ done }} de
+                  {{ c.item.sets }} series de este ejercicio.
                   {{
                     done >= c.item.sets
-                      ? 'Puedes hacer una serie extra o pasar al siguiente (▶).'
+                      ? 'Puedes hacer una serie extra o pasar al siguiente.'
                       : 'Toca Continuar para seguir.'
                   }}
                 </p>
               } @else {
                 <p class="todo">
-                  👉 Colócate, prepara el peso y toca <strong>Empezar</strong>. Con ◀ ▶ cambias de ejercicio.
+                  <ion-icon name="arrow-forward-outline" aria-hidden="true"></ion-icon> Colócate, prepara el peso y toca
+                  <strong>Empezar</strong>. Con las flechas cambias de ejercicio.
                 </p>
               }
             }
@@ -268,7 +297,8 @@ const GUIDE_OPTIONS = [
                 </ion-button>
               </div>
               <p class="todo">
-                👉 Al terminar la serie, ajusta el número si hiciste otra cantidad y toca <strong>Serie lista</strong>.
+                <ion-icon name="arrow-forward-outline" aria-hidden="true"></ion-icon> Al terminar la serie, ajusta el
+                número si hiciste otra cantidad y toca <strong>Serie lista</strong>.
               </p>
             }
           }
@@ -296,7 +326,10 @@ const GUIDE_OPTIONS = [
                   <ion-icon slot="start" name="play"></ion-icon> Iniciar cronómetro
                 </ion-button>
               }
-              <p class="todo">👉 Inicia el cronómetro, mantén hasta que termine y toca <strong>Listo</strong>.</p>
+              <p class="todo">
+                <ion-icon name="arrow-forward-outline" aria-hidden="true"></ion-icon> Inicia el cronómetro, mantén hasta
+                que termine y toca <strong>Listo</strong>.
+              </p>
             }
           }
 
@@ -326,7 +359,7 @@ const GUIDE_OPTIONS = [
                   Esto se llama <strong>RIR</strong> (repeticiones en reserva). Lo usamos para ajustar tu peso.
                 </p>
               } @else {
-                <h2 class="big">¡Listo! ✅</h2>
+                <h2 class="big">¡Listo!</h2>
                 <p class="center-text">{{ exerciseFeedback() }}</p>
                 <p class="q">¿Qué tal te pareció este ejercicio?</p>
                 <p class="hint">1 = no me gustó nada · 10 = excelente. Nos ayuda a elegir mejor tus ejercicios.</p>
@@ -373,12 +406,15 @@ const GUIDE_OPTIONS = [
               <ion-button fill="outline" (click)="addRest(30)">+30 s</ion-button>
               <ion-button fill="clear" (click)="endRest()">Saltar descanso</ion-button>
             </div>
-            <p class="todo">👉 Cuando suene el cronómetro, haz la siguiente serie.</p>
+            <p class="todo">
+              <ion-icon name="arrow-forward-outline" aria-hidden="true"></ion-icon> Cuando suene el cronómetro, haz la
+              siguiente serie.
+            </p>
           }
 
           <!-- 5. Fin del día: esfuerzo y opinión de la guía -->
           @case ('finish') {
-            <h1 class="center-text">{{ incomplete() ? 'Fin del día' : '¡Terminaste! 💪' }}</h1>
+            <h1 class="center-text">{{ incomplete() ? 'Fin del día' : '¡Terminaste!' }}</h1>
             @if (incomplete()) {
               <p class="done-note">Hiciste {{ exercisesDone() }} de {{ items().length }} ejercicios.</p>
               <p class="q">¿Por qué terminaste antes? (puedes elegir varios)</p>
@@ -419,7 +455,7 @@ const GUIDE_OPTIONS = [
             <div class="grid5">
               @for (g of guideOptions; track g.value) {
                 <button class="pick" [class.on]="guideRating() === g.value" (click)="guideRating.set(g.value)">
-                  <span class="pick-main">{{ g.emoji }}</span>
+                  <ion-icon class="pick-main" [name]="g.icon" aria-hidden="true"></ion-icon>
                   <span class="pick-sub">{{ g.label }}</span>
                 </button>
               }
@@ -434,12 +470,15 @@ const GUIDE_OPTIONS = [
               [value]="feedback()"
               (ionInput)="feedback.set($event.detail.value ?? '')"
             ></ion-textarea>
-            <p class="todo">👉 Toca <strong>Guardar</strong>: así mejoramos tu próxima rutina.</p>
+            <p class="todo">
+              <ion-icon name="arrow-forward-outline" aria-hidden="true"></ion-icon> Toca <strong>Guardar</strong>: así
+              mejoramos tu próxima rutina.
+            </p>
           }
 
           <!-- 6. Resumen: cada número con su explicación -->
           @case ('done') {
-            <h1 class="center-text">¡Buen trabajo! 🎉</h1>
+            <h1 class="center-text">¡Buen trabajo!</h1>
             @if (incomplete()) {
               <p class="done-note">Hiciste {{ exercisesDone() }} de {{ items().length }} ejercicios. ¡Igual suma!</p>
             }
@@ -575,6 +614,7 @@ const GUIDE_OPTIONS = [
           <div class="actions">
             @if (showNav()) {
               <ion-button
+                color="primary"
                 class="nav"
                 fill="outline"
                 [disabled]="index() === 0 || countdown() !== null"
@@ -585,12 +625,15 @@ const GUIDE_OPTIONS = [
               </ion-button>
             }
             @if (primaryAction(); as a) {
-              <ion-button class="main" size="large" [disabled]="a.disabled" (click)="a.run()">{{ a.label }}</ion-button>
+              <ion-button color="primary" class="main" size="large" [disabled]="a.disabled" (click)="a.run()">{{
+                a.label
+              }}</ion-button>
             } @else {
               <span class="main hint center-text">{{ phase() === 'rest' ? 'Descansando…' : 'Elige una opción' }}</span>
             }
             @if (showNav()) {
               <ion-button
+                color="primary"
                 class="nav"
                 fill="outline"
                 [disabled]="countdown() !== null"
@@ -1170,7 +1213,27 @@ export class WorkoutPage implements OnInit, OnDestroy {
     typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   constructor() {
-    addIcons({ add, chevronBack, chevronForward, close, pause, play, remove, swapHorizontal });
+    addIcons({
+      flagOutline,
+      locationOutline,
+      checkmarkCircleOutline,
+      barbellOutline,
+      checkmark,
+      arrowForwardOutline,
+      sad,
+      sadOutline,
+      removeCircleOutline,
+      happyOutline,
+      happy,
+      add,
+      chevronBack,
+      chevronForward,
+      close,
+      pause,
+      play,
+      remove,
+      swapHorizontal,
+    });
     // Guarda el avance en cada cambio para poder retomarlo si se cierra la app.
     effect(() => {
       const phase = this.phase();
@@ -1301,9 +1364,9 @@ export class WorkoutPage implements OnInit, OnDestroy {
           disabled: this.countdown() !== null,
         };
       case 'set':
-        return { label: `Serie ${this.setNumber()} lista ✓`, run: () => this.finishSet() };
+        return { label: `Serie ${this.setNumber()} lista`, run: () => this.finishSet() };
       case 'timed':
-        return { label: 'Listo ✓', run: () => this.finishTimed() };
+        return { label: 'Listo', run: () => this.finishTimed() };
       case 'rir':
         return this.rirChosen() === null
           ? null
@@ -1881,8 +1944,10 @@ export class WorkoutPage implements OnInit, OnDestroy {
       beginner: p.beginner,
       senior: p.senior,
       cautious: p.cautious,
+      marks: p.marks,
     };
-    this.target = rirTarget(this.athlete);
+    // El RIR objetivo sale de la programación (enfoque, nivel y precauciones).
+    this.target = p.programme.rir;
   }
 
   private adviceFor(ex: Exercise, item: StoredExercise, timed: boolean): LoadAdvice {

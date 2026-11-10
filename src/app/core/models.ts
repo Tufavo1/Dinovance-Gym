@@ -99,6 +99,34 @@ export const FOCUS_OPTIONS: Option[] = [
   { value: 'piernas', label: 'Piernas' },
 ];
 
+export interface StrengthMark {
+  kg?: number;
+  reps: number;
+}
+export type StrengthMarks = Record<string, StrengthMark>;
+
+/** Levantamientos base para pedir una marca (PR) y calcular el RM estimado. */
+export const STRENGTH_LIFTS: { value: string; label: string; bodyweight?: boolean }[] = [
+  { value: 'sentadilla', label: 'Sentadilla' },
+  { value: 'press_pecho', label: 'Press de banca' },
+  { value: 'bisagra', label: 'Peso muerto' },
+  { value: 'press_hombro', label: 'Press militar (sobre la cabeza)' },
+  { value: 'remo', label: 'Remo con barra o mancuerna' },
+  { value: 'dominadas', label: 'Dominadas (sin ayuda)', bodyweight: true },
+  { value: 'flexiones', label: 'Flexiones de pecho', bodyweight: true },
+];
+
+/** Grupos para elegir cuántas veces por semana quiere entrenarlos. */
+export const FREQUENCY_GROUPS: Option[] = [
+  { value: 'pecho', label: 'Pecho' },
+  { value: 'espalda', label: 'Espalda' },
+  { value: 'hombros', label: 'Hombros' },
+  { value: 'brazos', label: 'Brazos' },
+  { value: 'piernas', label: 'Piernas' },
+  { value: 'gluteos', label: 'Glúteos' },
+  { value: 'abdomen', label: 'Abdomen' },
+];
+
 export const PLACE_OPTIONS: Option[] = [
   { value: 'smartfit', label: 'Smart Fit' },
   { value: 'otro_gimnasio', label: 'Otro gimnasio' },
@@ -207,6 +235,42 @@ export const PREGNANCY_OPTIONS: Option[] = [
   { value: 'posparto', label: 'Tuve un bebé hace menos de 12 meses' },
 ];
 
+/** Cómo prefiere entrenar: decide volumen (series), cercanía al fallo y descansos. */
+export const APPROACH_OPTIONS: Option[] = [
+  {
+    value: 'equilibrado',
+    label: 'Equilibrado (recomendado)',
+    hint: 'Volumen moderado, 2 veces por semana cada músculo, series cerca del fallo (Schoenfeld, Helms, Israetel).',
+  },
+  {
+    value: 'alta_intensidad',
+    label: 'Alta intensidad, pocas series',
+    hint: 'Pocas series muy duras y más descanso entre sesiones (estilo Mentzer / Heavy Duty). Solo con algo de experiencia.',
+  },
+  {
+    value: 'alto_volumen',
+    label: 'Alto volumen',
+    hint: 'Más series por semana y sesiones largas. Requiere buen descanso, sueño y comida.',
+  },
+];
+
+export const NUTRITION_OPTIONS: Option[] = [
+  {
+    value: 'deficit',
+    label: 'Estoy bajando de peso (déficit)',
+    hint: 'Mantenemos la intensidad y cuidamos el volumen.',
+  },
+  { value: 'mantenimiento', label: 'Mantengo mi peso' },
+  { value: 'superavit', label: 'Estoy comiendo para ganar peso (superávit)', hint: 'Tu cuerpo tolera más volumen.' },
+  { value: 'no_se', label: 'No lo sé / no llevo control' },
+];
+
+export const STRESS_OPTIONS: Option[] = [
+  { value: 'bajo', label: 'Bajo', hint: 'Vida tranquila, buena recuperación.' },
+  { value: 'medio', label: 'Medio', hint: 'Trabajo o estudios exigentes, pero manejable.' },
+  { value: 'alto', label: 'Alto', hint: 'Estrés constante, poco descanso mental.' },
+];
+
 export const DAYS_OPTIONS: Option[] = [2, 3, 4, 5, 6].map((n) => ({
   value: String(n),
   label: `${n} días por semana`,
@@ -278,6 +342,13 @@ export interface HealthProfile {
   activity_level: string | null;
   sleep_hours: string | null;
   pregnancy_status: string;
+  training_approach?: string | null;
+  nutrition_phase?: string | null;
+  stress_level?: string | null;
+  /** Mejores marcas: kg y repeticiones de levantamientos base, o repeticiones máximas con el peso corporal. */
+  strength_marks?: StrengthMarks | null;
+  /** Veces por semana que quiere entrenar cada grupo muscular (1 a 4). */
+  muscle_frequency?: Record<string, number> | null;
   has_medical_condition: boolean;
   medical_notes: string | null;
   consent_health_data: boolean;

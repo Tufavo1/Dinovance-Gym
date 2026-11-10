@@ -3,6 +3,7 @@ import { Component, computed, effect, inject, signal, type OnInit } from '@angul
 import { Router, RouterLink } from '@angular/router';
 import {
   ActionSheetController,
+  ModalController,
   AlertController,
   IonButton,
   IonButtons,
@@ -28,7 +29,27 @@ import {
   type ItemReorderEventDetail,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { add, chevronDown, chevronUp, ellipsisHorizontal, refresh, remove, trash, trashOutline } from 'ionicons/icons';
+import {
+  add,
+  addCircleOutline,
+  bulbOutline,
+  checkmarkOutline,
+  chevronDown,
+  chevronUp,
+  ellipsisHorizontal,
+  flagOutline,
+  listOutline,
+  locationOutline,
+  peopleOutline,
+  refresh,
+  star,
+  barbellOutline,
+  remove,
+  timeOutline,
+  trash,
+  trashOutline,
+  warningOutline,
+} from 'ionicons/icons';
 
 import { ExerciseService } from '../../core/exercise.service';
 import { localStore } from '../../core/local-store';
@@ -61,6 +82,7 @@ import { exerciseName } from '../../core/routine/exercise-names';
 import { exercisesForMuscle, type GeneratedRoutine, type MuscleOption } from '../../core/routine/generator';
 import { MUSCLE_ES } from '../../core/routine/rules';
 import { RoutineService, ageFrom } from '../../core/routine.service';
+import { askGear } from '../../shared/gear-modal.component';
 import { BODY_PARTS, BodyMapComponent, type BodyPart, type BodyView } from '../../shared/body-map.component';
 import { HelpButtonComponent } from '../../shared/help-button.component';
 import { TabBarComponent } from '../../shared/tab-bar.component';
@@ -127,7 +149,7 @@ const REGIONS: { label: string; parts: string[] }[] = [
         <ion-title>Crear mi rutina</ion-title>
         <ion-buttons slot="end">
           <ion-button
-            color="danger"
+            color="light"
             [disabled]="totalItems() === 0"
             (click)="clearAll()"
             aria-label="Limpiar todos los ejercicios"
@@ -164,9 +186,17 @@ const REGIONS: { label: string; parts: string[] }[] = [
         </ion-toolbar>
         <ion-toolbar class="mode-bar">
           <ion-segment [value]="mode()" (ionChange)="mode.set($any($event.detail.value))">
-            <ion-segment-button value="agregar"><ion-label>➕ Agregar</ion-label></ion-segment-button>
+            <ion-segment-button value="agregar"
+              ><ion-label
+                ><ion-icon name="add-circle-outline" aria-hidden="true"></ion-icon> Agregar</ion-label
+              ></ion-segment-button
+            >
             <ion-segment-button value="dia">
-              <ion-label>📋 Día {{ dayIdx() + 1 }} ({{ day().length }})</ion-label>
+              <ion-label
+                ><ion-icon name="list-outline" aria-hidden="true"></ion-icon> Día {{ dayIdx() + 1 }} ({{
+                  day().length
+                }})</ion-label
+              >
             </ion-segment-button>
           </ion-segment>
         </ion-toolbar>
@@ -180,14 +210,21 @@ const REGIONS: { label: string; parts: string[] }[] = [
         } @else {
           <!-- Tus respuestas en una línea; el detalle solo si lo pide (Hick) -->
           <button class="me" (click)="showMe.set(!showMe())" [attr.aria-expanded]="showMe()">
-            <span>🎯 {{ goalLabel() }} · ⏱ {{ minutes() }} min · 📍 {{ placeLabel(place()) }}</span>
+            <span
+              ><ion-icon name="flag-outline" aria-hidden="true"></ion-icon> {{ goalLabel() }} ·
+              <ion-icon name="time-outline" aria-hidden="true"></ion-icon> {{ minutes() }} min ·
+              <ion-icon name="location-outline" aria-hidden="true"></ion-icon> {{ placeLabel(place()) }}</span
+            >
             <ion-icon [name]="showMe() ? 'chevron-up' : 'chevron-down'"></ion-icon>
           </button>
           @if (showMe()) {
             <div class="me-detail">
               <p>Nivel: {{ levelLabel() }} · {{ days().length }} días por semana</p>
               @if (injuryText()) {
-                <p class="hurt-text">⚠ Lesión activa: {{ injuryText() }} (zonas en rojo)</p>
+                <p class="hurt-text">
+                  <ion-icon name="warning-outline" aria-hidden="true"></ion-icon> Lesión activa:
+                  {{ injuryText() }} (zonas en rojo)
+                </p>
               }
               @if (places().length > 1) {
                 <ion-select
@@ -203,6 +240,9 @@ const REGIONS: { label: string; parts: string[] }[] = [
                   }
                 </ion-select>
               }
+              <ion-button fill="outline" size="small" (click)="editGear()">
+                <ion-icon slot="start" name="barbell-outline" aria-hidden="true"></ion-icon>Mi equipo disponible
+              </ion-button>
               <a routerLink="/perfil">Editar mis respuestas</a>
             </div>
           }
@@ -210,6 +250,12 @@ const REGIONS: { label: string; parts: string[] }[] = [
           @if (mode() === 'agregar') {
             <!-- ========== MODO AGREGAR: elegir zona ========== -->
             <h2 class="ask">¿Qué quieres entrenar el Día {{ dayIdx() + 1 }}?</h2>
+            <ol class="steps">
+              <li><b>1</b>Elige el día arriba</li>
+              <li><b>2</b>Toca un músculo</li>
+              <li><b>3</b>Agrega ejercicios</li>
+              <li><b>4</b>Revisa y guarda</li>
+            </ol>
 
             <section class="map-box">
               <ion-segment [value]="view()" (ionChange)="view.set($any($event.detail.value))" class="view-seg">
@@ -217,13 +263,14 @@ const REGIONS: { label: string; parts: string[] }[] = [
                 <ion-segment-button value="back"><ion-label>Espalda</ion-label></ion-segment-button>
               </ion-segment>
               <app-body-map
-                [view]="view()"
+                [(view)]="view"
                 [active]="activeParts()"
                 [injured]="injuredParts()"
                 (pick)="openPart($event)"
               ></app-body-map>
               <p class="legend">
-                Toca una zona · <span class="dot has"></span> en este día <span class="dot hurt"></span> lesión
+                <span class="sw sel"></span>elegido <span class="dot has"></span>ya tiene ejercicios
+                <span class="dot hurt"></span>lesión
               </p>
             </section>
 
@@ -273,7 +320,9 @@ const REGIONS: { label: string; parts: string[] }[] = [
             @if (day().length === 0) {
               <div class="empty">
                 <p>Este día está vacío.</p>
-                <ion-button size="large" (click)="mode.set('agregar')">➕ Agregar ejercicios</ion-button>
+                <ion-button size="large" (click)="mode.set('agregar')"
+                  ><ion-icon name="add-circle-outline" aria-hidden="true"></ion-icon> Agregar ejercicios</ion-button
+                >
               </div>
             } @else {
               <p class="hint">Toca un ejercicio para cambiar series y descanso · arrastra ≡ para ordenar.</p>
@@ -296,7 +345,9 @@ const REGIONS: { label: string; parts: string[] }[] = [
                   }
                 </ion-reorder-group>
               </ion-list>
-              <ion-button expand="block" fill="outline" (click)="mode.set('agregar')">➕ Agregar más</ion-button>
+              <ion-button expand="block" fill="outline" (click)="mode.set('agregar')"
+                ><ion-icon name="add-circle-outline" aria-hidden="true"></ion-icon> Agregar más</ion-button
+              >
             }
           }
         }
@@ -308,6 +359,7 @@ const REGIONS: { label: string; parts: string[] }[] = [
       <ion-toolbar>
         <div class="actions">
           <ion-button
+            color="primary"
             class="main"
             size="large"
             [disabled]="loading() || totalItems() === 0"
@@ -378,20 +430,24 @@ const REGIONS: { label: string; parts: string[] }[] = [
                 ayuda al profesor de sala.
               </p>
             } @else {
-              <h3 class="sec">⭐ Recomendados para {{ pt.label.toLowerCase() }}</h3>
+              <h3 class="sec">
+                <ion-icon name="star" aria-hidden="true"></ion-icon> Recomendados para {{ pt.label.toLowerCase() }}
+              </h3>
               @for (o of recommendedOptions(); track o.exercise.id) {
                 <ng-container *ngTemplateOutlet="optRow; context: { $implicit: o }"></ng-container>
               }
 
               @if (guide(); as g) {
-                <h3 class="sec">💡 Consejos</h3>
+                <h3 class="sec"><ion-icon name="bulb-outline" aria-hidden="true"></ion-icon> Consejos</h3>
                 <ul class="tips">
                   @for (t of g.tips; track t) {
                     <li>{{ t }}</li>
                   }
                 </ul>
                 @if (pairParts().length > 0) {
-                  <h3 class="sec">🤝 Combina bien el mismo día con</h3>
+                  <h3 class="sec">
+                    <ion-icon name="people-outline" aria-hidden="true"></ion-icon> Combina bien el mismo día con
+                  </h3>
                   <p class="hint">{{ g.pairWhy }}</p>
                   <div class="parts">
                     @for (pp of pairParts(); track pp.id) {
@@ -439,7 +495,9 @@ const REGIONS: { label: string; parts: string[] }[] = [
           >
         </span>
         @if (inDay(o.exercise.id)) {
-          <ion-button fill="outline" (click)="removeById(o.exercise.id)" aria-label="Quitar del día">✓</ion-button>
+          <ion-button fill="outline" (click)="removeById(o.exercise.id)" aria-label="Quitar del día"
+            ><ion-icon slot="icon-only" name="checkmark-outline"></ion-icon
+          ></ion-button>
         } @else {
           <ion-button (click)="addOption(o)">Agregar</ion-button>
         }
@@ -519,7 +577,7 @@ const REGIONS: { label: string; parts: string[] }[] = [
           </div>
 
           @if (analysis().warnings.length > 0) {
-            <h3 class="sec">💡 Antes de guardar</h3>
+            <h3 class="sec"><ion-icon name="bulb-outline" aria-hidden="true"></ion-icon> Antes de guardar</h3>
             @for (w of reviewWarnings(); track w.id) {
               <ng-container *ngTemplateOutlet="warnTpl; context: { $implicit: w }"></ng-container>
             }
@@ -532,7 +590,7 @@ const REGIONS: { label: string; parts: string[] }[] = [
               <small>
                 {{ d.length }} ejercicios · ≈ {{ analysis().dayMinutes[i] }} min
                 @if (analysis().dayMinutes[i] > minutes() + 10) {
-                  · ⚠ más que tus {{ minutes() }} min
+                  · <ion-icon name="warning-outline" aria-hidden="true"></ion-icon> más que tus {{ minutes() }} min
                 }
               </small>
             </button>
@@ -551,7 +609,7 @@ const REGIONS: { label: string; parts: string[] }[] = [
         <ion-footer>
           <ion-toolbar>
             <div class="actions">
-              <ion-button class="main" size="large" [disabled]="saving()" (click)="save()">
+              <ion-button color="primary" class="main" size="large" [disabled]="saving()" (click)="save()">
                 {{ saving() ? 'Guardando…' : 'Guardar rutina' }}
               </ion-button>
             </div>
@@ -570,6 +628,7 @@ export class ManualPage implements OnInit {
   private readonly alerts = inject(AlertController);
   private readonly sheets = inject(ActionSheetController);
   private readonly toasts = inject(ToastController);
+  private readonly modals = inject(ModalController);
 
   readonly regions = REGIONS;
   readonly maxPerDay = MAX_EXERCISES_PER_DAY;
@@ -705,7 +764,27 @@ export class ManualPage implements OnInit {
   });
 
   constructor() {
-    addIcons({ add, chevronDown, chevronUp, ellipsisHorizontal, refresh, remove, trash, trashOutline });
+    addIcons({
+      star,
+      barbellOutline,
+      addCircleOutline,
+      listOutline,
+      flagOutline,
+      timeOutline,
+      locationOutline,
+      warningOutline,
+      bulbOutline,
+      peopleOutline,
+      checkmarkOutline,
+      add,
+      chevronDown,
+      chevronUp,
+      ellipsisHorizontal,
+      refresh,
+      remove,
+      trash,
+      trashOutline,
+    });
     // Tesler: borrador automático; si sale y vuelve, sigue donde quedó.
     effect(() => {
       if (this.loading()) return;
@@ -742,6 +821,8 @@ export class ManualPage implements OnInit {
     } finally {
       this.loading.set(false);
     }
+    // Antes de armar nada: qué máquinas y accesorios tiene a mano.
+    if (this.totalItems() === 0) await this.editGear();
   }
 
   // ---------- Días ----------
@@ -1033,6 +1114,12 @@ export class ManualPage implements OnInit {
       await this.toast('Revisa tus ejercicios: el equipamiento cambia según el lugar.');
     }
     this.place.set(p);
+    await this.editGear();
+  }
+
+  /** Pregunta qué equipo hay disponible en el lugar elegido. */
+  async editGear() {
+    await askGear(this.modals, this.place());
   }
 
   // ---------- Guardado ----------

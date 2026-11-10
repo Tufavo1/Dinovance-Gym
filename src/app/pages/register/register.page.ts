@@ -21,6 +21,7 @@ import {
 } from '@ionic/angular';
 
 import { AuthService, translateAuthError } from '../../core/auth.service';
+import { BrandLogoComponent } from '../../shared/brand-logo.component';
 import { COUNTRY_OPTIONS, GENDER_OPTIONS } from '../../core/models';
 
 function ageBetween(min: number, max: number) {
@@ -56,6 +57,7 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
   imports: [
     ReactiveFormsModule,
     RouterLink,
+    BrandLogoComponent,
     IonHeader,
     IonToolbar,
     IonTitle,
@@ -74,6 +76,7 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
     </ion-header>
 
     <ion-content>
+      <app-brand-logo [small]="true"></app-brand-logo>
       <form class="page" [formGroup]="form" (ngSubmit)="submit()" novalidate>
         <p class="section-title">Tus datos</p>
 

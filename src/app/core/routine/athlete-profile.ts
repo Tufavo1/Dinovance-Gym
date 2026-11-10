@@ -1,5 +1,16 @@
 import type { HealthProfile, InjuryRecord } from '../models';
+import { approachOf, programmeFor, type Programme } from '../evidence/programming';
 import { LEVEL_RANK } from './rules';
+import type { StrengthMarks } from '../models';
+import {
+  assessStrength,
+  planFrequency,
+  sanitizeFrequency,
+  sanitizeMarks,
+  type FrequencyPlan,
+  type StrengthAssessment,
+} from '../training/benchmarks';
+import { STRENGTH_LIFTS } from '../models';
 
 /**
  * Perfil del atleta: se calcula PRIMERO a partir del historial, la salud y los hábitos, y
@@ -41,6 +52,16 @@ export interface AthleteProfile {
   recoveredSurgeries: number;
   /** Lesión activa en rodilla o tobillo: el cardio debe ser de bajo impacto. */
   lowerLimbInjury: boolean;
+  highStress: boolean;
+  nutrition: string;
+  /** Programación basada en evidencia (volumen, RIR, series máximas). */
+  programme: Programme;
+  /** Marcas de fuerza válidas (PR) que dio la persona. */
+  marks: StrengthMarks;
+  /** Nivel de fuerza deducido de las marcas (solo informativo: no cambia el nivel declarado). */
+  strength: StrengthAssessment | null;
+  /** Frecuencia semanal pedida por grupo muscular, ya ajustada a la evidencia. */
+  frequency: FrequencyPlan;
 }
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
@@ -50,6 +71,7 @@ export function buildAthleteProfile(
   injuries: InjuryRecord[],
   age: number | null,
   gender: string | null,
+  weightKg: number | null = null,
 ): AthleteProfile {
   const rank = LEVEL_RANK[health.experience ?? ''] ?? 0;
   const goal = health.goal ?? 'salud_general';
@@ -77,7 +99,35 @@ export function buildAthleteProfile(
   const active = injuries.filter((i) => i.status === 'activa');
   const activeInjuryAreas = new Set(active.map((i) => i.body_area));
 
+  const poorSleep = health.sleep_hours === 'menos_5' || health.sleep_hours === 'entre_5_y_6';
+  const highStress = health.stress_level === 'alto';
+  const daysPerWeek = clamp(health.days_per_week ?? 3, 2, 6);
+  const minutes = clamp(health.session_minutes ?? 60, 20, 120);
+  const styles = health.training_styles?.length ? health.training_styles : ['no_se'];
+  const programme = programmeFor({
+    rank,
+    beginner,
+    cautious,
+    poorSleep,
+    highStress,
+    approach: approachOf(health),
+    nutrition: health.nutrition_phase ?? 'no_se',
+    goal,
+    styles,
+    minutes,
+    daysPerWeek,
+  });
+
+  const marks = sanitizeMarks(
+    health.strength_marks,
+    STRENGTH_LIFTS.map((l) => l.value),
+  );
+  const frequency = planFrequency(sanitizeFrequency(health.muscle_frequency), programme.approach === 'alta_intensidad');
+
   return {
+    marks,
+    strength: assessStrength(marks, weightKg, gender),
+    frequency,
     rank,
     maxRank,
     beginner,
@@ -88,16 +138,19 @@ export function buildAthleteProfile(
     pregnant,
     postpartum,
     senior,
-    poorSleep: health.sleep_hours === 'menos_5' || health.sleep_hours === 'entre_5_y_6',
+    poorSleep,
+    highStress,
+    nutrition: health.nutrition_phase ?? 'no_se',
+    programme,
     sedentary,
     starterVolume: beginner && sedentary && !athleticBase,
     athleticBase,
     gender,
     goals,
     goal,
-    styles: health.training_styles?.length ? health.training_styles : ['no_se'],
-    daysPerWeek: clamp(health.days_per_week ?? 3, 2, 6),
-    minutes: clamp(health.session_minutes ?? 60, 20, 120),
+    styles,
+    daysPerWeek: Math.min(daysPerWeek, programme.maxDays),
+    minutes,
     activeInjuryAreas,
     allInjuryAreas: new Set(injuries.map((i) => i.body_area)),
     recoveredSurgeries: injuries.filter((i) => i.status !== 'activa' && i.kind === 'cirugia').length,

@@ -1,0 +1,17 @@
+# Dinovance Gym: la app es privada (requiere cuenta). Solo se dejan visibles el inicio de sesión y el registro.
+# Nota: robots.txt es una petición a los buscadores, no una medida de seguridad;
+# el acceso real lo protegen el inicio de sesión y las políticas RLS de Supabase.
+User-agent: *
+Allow: /login
+Allow: /registro
+Disallow: /home
+Disallow: /onboarding
+Disallow: /perfil
+Disallow: /rutina
+Disallow: /rutinas
+Disallow: /entrenar/
+Disallow: /crear-rutina
+Disallow: /progreso
+Disallow: /mensajes
+Disallow: /ciencia
+Disallow: /assets/

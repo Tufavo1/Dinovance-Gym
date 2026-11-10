@@ -1,17 +1,9 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import {
-  IonButton,
-  IonContent,
-  IonHeader,
-  IonInput,
-  IonInputPasswordToggle,
-  IonTitle,
-  IonToolbar,
-  ToastController,
-} from '@ionic/angular';
+import { IonButton, IonContent, IonInput, IonInputPasswordToggle, ToastController } from '@ionic/angular';
 
+import { BrandLogoComponent } from '../../shared/brand-logo.component';
 import { AuthService, translateAuthError } from '../../core/auth.service';
 
 @Component({
@@ -19,23 +11,16 @@ import { AuthService, translateAuthError } from '../../core/auth.service';
   imports: [
     ReactiveFormsModule,
     RouterLink,
-    IonHeader,
-    IonToolbar,
-    IonTitle,
     IonContent,
     IonInput,
     IonInputPasswordToggle,
     IonButton,
+    BrandLogoComponent,
   ],
   template: `
-    <ion-header>
-      <ion-toolbar>
-        <ion-title>Avanza</ion-title>
-      </ion-toolbar>
-    </ion-header>
-
     <ion-content>
-      <form class="page" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+      <app-brand-logo tagline="Entrena con ciencia, no con suerte"></app-brand-logo>
+      <form class="page sheet" [formGroup]="form" (ngSubmit)="submit()" novalidate>
         <h1>Bienvenido/a</h1>
         <p class="hint">Inicia sesión para ver tu rutina.</p>
 

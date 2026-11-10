@@ -2,13 +2,13 @@ import { Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonFooter, IonIcon, IonLabel, IonTabBar, IonTabButton } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { barbellOutline, createOutline, homeOutline, listOutline } from 'ionicons/icons';
+import { barbellOutline, createOutline, homeOutline, listOutline, statsChartOutline } from 'ionicons/icons';
 
-export type TabName = 'home' | 'rutina' | 'crear' | 'rutinas';
+export type TabName = 'home' | 'rutina' | 'progreso' | 'crear' | 'rutinas';
 
 /**
  * Barra de navegación inferior (patrón conocido de apps móviles: Ley de Jakob) con botones
- * grandes al alcance del pulgar (Ley de Fitts). Solo 4 destinos (Ley de Hick).
+ * grandes al alcance del pulgar (Ley de Fitts). Solo 5 destinos (Ley de Hick).
  */
 @Component({
   selector: 'app-tab-bar',
@@ -22,7 +22,11 @@ export type TabName = 'home' | 'rutina' | 'crear' | 'rutinas';
         </ion-tab-button>
         <ion-tab-button tab="rutina" routerLink="/rutina" routerDirection="root">
           <ion-icon name="barbell-outline" aria-hidden="true"></ion-icon>
-          <ion-label>Mi rutina</ion-label>
+          <ion-label>Rutina</ion-label>
+        </ion-tab-button>
+        <ion-tab-button tab="progreso" routerLink="/progreso" routerDirection="root">
+          <ion-icon name="stats-chart-outline" aria-hidden="true"></ion-icon>
+          <ion-label>Progreso</ion-label>
         </ion-tab-button>
         <ion-tab-button tab="crear" routerLink="/crear-rutina" routerDirection="root">
           <ion-icon name="create-outline" aria-hidden="true"></ion-icon>
@@ -30,7 +34,7 @@ export type TabName = 'home' | 'rutina' | 'crear' | 'rutinas';
         </ion-tab-button>
         <ion-tab-button tab="rutinas" routerLink="/rutinas" routerDirection="root">
           <ion-icon name="list-outline" aria-hidden="true"></ion-icon>
-          <ion-label>Mis rutinas</ion-label>
+          <ion-label>Rutinas</ion-label>
         </ion-tab-button>
       </ion-tab-bar>
     </ion-footer>
@@ -48,6 +52,6 @@ export class TabBarComponent {
   readonly active = input.required<TabName>();
 
   constructor() {
-    addIcons({ homeOutline, barbellOutline, createOutline, listOutline });
+    addIcons({ homeOutline, barbellOutline, createOutline, listOutline, statsChartOutline });
   }
 }

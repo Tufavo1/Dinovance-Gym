@@ -1,4 +1,5 @@
 import type { Exercise } from '../models';
+import { scheme } from '../evidence/programming';
 import type { AthleteProfile } from './athlete-profile';
 
 export interface Prescription {
@@ -45,36 +46,30 @@ export function prescribe(ex: Exercise, p: AthleteProfile): Prescription {
   }
 
   const compound = ex.mechanic === 'compound';
-  const strength = p.styles.includes('fuerza') || p.goal === 'fuerza';
-  const hypertrophy = p.styles.includes('hipertrofia') || p.goal === 'ganar_musculo';
-  const metabolic = ['perder_grasa', 'resistencia', 'tonificar'].includes(p.goal);
-
-  let r: Prescription;
-  if (strength) {
-    r = compound
-      ? { sets: 4, reps_min: 4, reps_max: 6, rest_seconds: 150, notes: null }
-      : { sets: 3, reps_min: 8, reps_max: 12, rest_seconds: 90, notes: null };
-  } else if (hypertrophy) {
-    r = compound
-      ? { sets: p.styles.includes('hipertrofia') ? 4 : 3, reps_min: 6, reps_max: 10, rest_seconds: 120, notes: null }
-      : { sets: 3, reps_min: 10, reps_max: 15, rest_seconds: 75, notes: null };
-  } else if (metabolic) {
-    r = { sets: 3, reps_min: 12, reps_max: 15, rest_seconds: 60, notes: null };
-  } else {
-    r = { sets: 3, reps_min: 10, reps_max: 12, rest_seconds: 75, notes: null };
-  }
+  // Series, repeticiones y descanso según la evidencia (ver evidence/programming.ts).
+  let r: Prescription = {
+    ...scheme({
+      compound,
+      goal: p.goal,
+      styles: p.styles,
+      programme: p.programme,
+      beginner: p.beginner,
+      rank: p.rank,
+    }),
+    notes: null,
+  };
 
   // Abdomen: más repeticiones y descanso corto, sin importar el objetivo.
   if (ex.primary_muscles.includes('abdominals')) {
     r = { ...r, sets: Math.min(r.sets, 3), reps_min: 12, reps_max: 20, rest_seconds: 60 };
   }
 
-  // Principiantes: técnica primero, rangos moderados y nunca menos de 8 repeticiones.
-  if (p.beginner) {
-    r = { ...r, sets: Math.min(r.sets, 3), rest_seconds: Math.max(r.rest_seconds, 75) };
-    if (r.reps_min < 8) r = { ...r, reps_min: 8, reps_max: Math.max(r.reps_max, 12) };
-  }
-  if (p.starterVolume) r = { ...r, sets: 2 };
+  // Pantorrillas: responden mejor a más repeticiones y recorrido completo.
+  if (ex.primary_muscles.includes('calves'))
+    r = { ...r, reps_min: 10, reps_max: 20, rest_seconds: Math.min(r.rest_seconds, 90) };
+
+  // Primeras semanas con poco hábito: 2 series por ejercicio y vuelven a 3 después (ACSM 2009).
+  if (p.starterVolume) r = { ...r, sets: Math.min(r.sets, 2) };
   if (p.poorSleep && r.sets > 3) r = { ...r, sets: 3 };
 
   // Abdominales estáticos (plancha) se miden en segundos.

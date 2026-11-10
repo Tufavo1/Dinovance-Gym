@@ -79,3 +79,6 @@ Thumbs.db
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Archivos temporales de wrangler
+.wrangler/

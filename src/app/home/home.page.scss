@@ -3,30 +3,59 @@ ion-card {
   margin-right: 0;
 }
 
-ion-card ion-item {
-  --padding-start: 0;
+.mark {
+  border-radius: 8px;
+  margin-left: 12px;
+}
+
+.hero .week-head {
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 0 8px;
+  font-size: 0.9rem;
+}
+
+.hero ion-progress-bar {
+  height: 8px;
+  border-radius: 6px;
+  --background: rgba(255, 255, 255, 0.18);
+}
+
+.hero .hint {
+  margin: 6px 0 0;
+}
+
+.hero h1 {
+  font-size: 1.8rem;
+  margin: 0;
+}
+
+.cta {
+  --background: linear-gradient(135deg, #0e7490 0%, #0f4c5c 100%);
+  color: #fff;
+  border: none;
+}
+
+.cta ion-card-title,
+.cta ion-card-subtitle {
+  color: #fff;
+}
+
+.cta ion-card-subtitle {
+  opacity: 0.8;
+}
+
+.cta ion-button {
+  --background: #fff;
+  --color: #0f172a;
+}
+
+.cta ion-button[fill='clear'] {
   --background: transparent;
+  --color: #fff;
 }
 
 .cta p {
+  color: rgba(255, 255, 255, 0.9);
   margin-bottom: 8px;
-}
-
-.week {
-  margin: 20px 0;
-}
-
-.week-head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.week ion-progress-bar {
-  height: 10px;
-  border-radius: 6px;
-}
-
-.week .hint {
-  margin-top: 8px;
 }

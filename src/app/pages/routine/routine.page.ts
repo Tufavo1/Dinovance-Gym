@@ -24,13 +24,34 @@ import {
   IonThumbnail,
   IonTitle,
   IonToolbar,
+  ModalController,
   ToastController,
   type ViewWillEnter,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { checkmarkCircle, chevronDown, chevronUp, cloudOfflineOutline, play, timeOutline } from 'ionicons/icons';
+import {
+  addCircleOutline,
+  arrowDownOutline,
+  arrowUpOutline,
+  checkmarkCircle,
+  chevronDown,
+  chevronUp,
+  listOutline,
+  cloudOfflineOutline,
+  createOutline,
+  create,
+  play,
+  repeatOutline,
+  saveOutline,
+  timeOutline,
+  trashOutline,
+  closeOutline,
+  pencilOutline,
+} from 'ionicons/icons';
 
 import { ExerciseService } from '../../core/exercise.service';
+import { estimateMinutesFor } from '../../core/routine/estimate';
+import type { Exercise } from '../../core/models';
 import { PLACE_OPTIONS, labelOf } from '../../core/models';
 import { ProfileService } from '../../core/profile.service';
 import { exerciseName } from '../../core/routine/exercise-names';
@@ -42,12 +63,18 @@ import {
   type StoredRoutine,
 } from '../../core/routine.service';
 import { WorkoutService, type WorkoutProgress } from '../../core/workout.service';
+import { EvidenceCardComponent } from '../../shared/evidence-card.component';
+import { ExerciseFactsComponent } from '../../shared/exercise-facts.component';
+import { askGear } from '../../shared/gear-modal.component';
+import { ExercisePickerComponent } from '../../shared/exercise-picker.component';
+import { HeaderActionsComponent } from '../../shared/header-actions.component';
 import { HelpButtonComponent } from '../../shared/help-button.component';
 import { TabBarComponent } from '../../shared/tab-bar.component';
 
 @Component({
   selector: 'app-routine',
   imports: [
+    ExerciseFactsComponent,
     RouterLink,
     IonHeader,
     IonToolbar,
@@ -72,6 +99,9 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
     IonSegmentButton,
     TabBarComponent,
     HelpButtonComponent,
+    HeaderActionsComponent,
+    EvidenceCardComponent,
+    ExercisePickerComponent,
   ],
   template: `
     <ion-header>
@@ -84,6 +114,7 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
         <ion-title>{{ id() && !routine()?.is_active ? 'Rutina guardada' : 'Mi rutina' }}</ion-title>
         <ion-buttons slot="end">
           <app-help-button></app-help-button>
+          <app-header-actions></app-header-actions>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
@@ -128,22 +159,6 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
             }
           </p>
 
-          @if (noteList().length > 0) {
-            <ion-card class="notes">
-              <ion-card-content>
-                <p class="notes-title">Recomendaciones para ti</p>
-                @for (n of visibleNotes(); track $index) {
-                  <p>• {{ n }}</p>
-                }
-                @if (noteList().length > 2) {
-                  <ion-button fill="clear" size="small" (click)="showAllNotes.set(!showAllNotes())">
-                    {{ showAllNotes() ? 'Ver menos' : 'Ver ' + (noteList().length - 2) + ' más' }}
-                  </ion-button>
-                }
-              </ion-card-content>
-            </ion-card>
-          }
-
           <ion-segment [scrollable]="true" [value]="selectedDay()" (ionChange)="selectDay($event.detail.value)">
             @for (day of r.routine_days; track day.id; let i = $index) {
               <ion-segment-button [value]="i">
@@ -160,6 +175,12 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
           @if (currentDay(); as day) {
             <div class="day-head">
               <h2>{{ dayTitle(day.name) }}</h2>
+              @if (!offline() && !editing()) {
+                <ion-button size="small" fill="outline" (click)="startEdit()">
+                  <ion-icon slot="start" name="create-outline"></ion-icon>
+                  Editar este día
+                </ion-button>
+              }
               <p class="hint">
                 <ion-icon name="time-outline"></ion-icon>
                 {{ day.estimated_minutes ? '≈ ' + day.estimated_minutes + ' min · ' : ''
@@ -167,36 +188,127 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
               </p>
             </div>
 
-            <ion-list lines="full" class="group">
-              @for (e of day.routine_exercises; track e.id; let n = $index) {
-                @let ex = catalog.byId().get(e.exercise_id);
-                <ion-item button [detail]="false" (click)="toggleOpen(e.id)">
-                  @if (catalog.imageUrl(ex); as img) {
-                    <ion-thumbnail slot="start">
-                      <img [src]="img" [alt]="ex ? name(ex) : ''" loading="lazy" />
-                    </ion-thumbnail>
-                  }
-                  <ion-label class="ion-text-wrap">
-                    <h3>{{ n + 1 }}. {{ ex ? name(ex) : 'Ejercicio' }}</h3>
-                    <p class="rx">{{ prescription(e) }}</p>
-                    @if (extraNote(e); as note) {
-                      <p>{{ note }}</p>
+            @if (editing()) {
+              <ion-list lines="full" class="group">
+                @for (e of draft(); track e.id; let n = $index; let first = $first; let last = $last) {
+                  @let ex = catalog.byId().get(e.exercise_id);
+                  <ion-item>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ n + 1 }}. {{ ex ? name(ex) : 'Ejercicio' }}</h3>
+                      <p class="rx">{{ prescription(e) }}</p>
+                      <div class="tools">
+                        <div class="grp">
+                          @if (!isTimed(e)) {
+                            <ion-button size="small" fill="outline" (click)="editSets(n)">
+                              <ion-icon slot="start" name="pencil-outline"></ion-icon>Series
+                            </ion-button>
+                          }
+                          <ion-button size="small" fill="outline" (click)="swapAt(n)">
+                            <ion-icon slot="start" name="repeat-outline"></ion-icon>Cambiar
+                          </ion-button>
+                        </div>
+                        <div class="grp">
+                          <ion-button
+                            size="small"
+                            fill="clear"
+                            aria-label="Subir"
+                            [disabled]="first"
+                            (click)="move(n, -1)"
+                          >
+                            <ion-icon slot="icon-only" name="arrow-up-outline"></ion-icon>
+                          </ion-button>
+                          <ion-button
+                            size="small"
+                            fill="clear"
+                            aria-label="Bajar"
+                            [disabled]="last"
+                            (click)="move(n, 1)"
+                          >
+                            <ion-icon slot="icon-only" name="arrow-down-outline"></ion-icon>
+                          </ion-button>
+                          <ion-button
+                            size="small"
+                            fill="clear"
+                            color="danger"
+                            aria-label="Quitar"
+                            (click)="removeAt(n)"
+                          >
+                            <ion-icon slot="icon-only" name="trash-outline"></ion-icon>
+                          </ion-button>
+                        </div>
+                      </div>
+                    </ion-label>
+                  </ion-item>
+                } @empty {
+                  <ion-item><ion-label class="hint">Este día no tiene ejercicios. Agrega uno.</ion-label></ion-item>
+                }
+              </ion-list>
+              <ion-button
+                expand="block"
+                fill="outline"
+                [disabled]="draft().length >= 15"
+                (click)="pickerOpen.set(true)"
+              >
+                <ion-icon slot="start" name="add-circle-outline"></ion-icon>
+                Agregar ejercicio
+              </ion-button>
+              <ion-button expand="block" size="large" [disabled]="saving()" (click)="saveEdit(day.id)">
+                <ion-icon slot="start" name="save-outline"></ion-icon>
+                {{ saving() ? 'Guardando…' : 'Guardar cambios' }}
+              </ion-button>
+              <ion-button expand="block" fill="clear" color="medium" [disabled]="saving()" (click)="cancelEdit()">
+                <ion-icon slot="start" name="close-outline"></ion-icon>
+                Cancelar
+              </ion-button>
+              <p class="hint">
+                Los cambios valen para este día. Los ejercicios fuera de tu equipo o lesión salen marcados al agregar.
+              </p>
+            } @else {
+              <ion-list lines="full" class="group">
+                @for (e of shown(day.routine_exercises); track e.id; let n = $index) {
+                  @let ex = catalog.byId().get(e.exercise_id);
+                  <ion-item button [detail]="false" (click)="toggleOpen(e.id)">
+                    @if (catalog.imageUrl(ex); as img) {
+                      <ion-thumbnail slot="start">
+                        <img [src]="img" [alt]="ex ? name(ex) : ''" loading="lazy" />
+                      </ion-thumbnail>
                     }
-                    @if (isOpen(e.id) && ex) {
-                      <ul class="steps">
-                        @for (cue of cues(ex); track cue) {
-                          <li>{{ cue }}</li>
-                        }
-                      </ul>
-                    }
-                  </ion-label>
-                  <ion-icon slot="end" [name]="isOpen(e.id) ? 'chevron-up' : 'chevron-down'" color="medium"></ion-icon>
-                </ion-item>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ n + 1 }}. {{ ex ? name(ex) : 'Ejercicio' }}</h3>
+                      <p class="rx">{{ prescription(e) }}</p>
+                      @if (extraNote(e); as note) {
+                        <p>{{ note }}</p>
+                      }
+                      @if (isOpen(e.id) && ex) {
+                        <app-exercise-facts [exercise]="ex"></app-exercise-facts>
+                        <p class="tech">Cómo hacerlo</p>
+                        <ul class="steps">
+                          @for (cue of cues(ex); track cue) {
+                            <li>{{ cue }}</li>
+                          }
+                        </ul>
+                      }
+                    </ion-label>
+                    <ion-icon
+                      slot="end"
+                      [name]="isOpen(e.id) ? 'chevron-up' : 'chevron-down'"
+                      color="medium"
+                    ></ion-icon>
+                  </ion-item>
+                }
+              </ion-list>
+              @if (day.routine_exercises.length > 1) {
+                <ion-button expand="block" fill="outline" (click)="showFull.set(!showFull())">
+                  <ion-icon slot="start" [name]="showFull() ? 'chevron-up' : 'list-outline'"></ion-icon>
+                  {{
+                    showFull() ? 'Ver menos' : 'Ver toda la rutina (' + day.routine_exercises.length + ' ejercicios)'
+                  }}
+                </ion-button>
               }
-            </ion-list>
-            <p class="hint">Toca un ejercicio para ver las claves de técnica.</p>
+              <p class="hint">Toca un ejercicio: para qué sirve y cómo hacerlo.</p>
+            }
 
-            @if (r.is_active) {
+            @if (r.is_active && !editing()) {
               <ion-button expand="block" size="large" [routerLink]="['/entrenar', day.id]">
                 <ion-icon slot="start" name="play"></ion-icon>
                 Empezar día {{ day.day_index }}
@@ -218,6 +330,24 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
               }
             }
           }
+
+          @if (noteList().length > 0) {
+            <ion-card class="notes">
+              <ion-card-content>
+                <p class="notes-title">Para ti</p>
+                @for (n of visibleNotes(); track $index) {
+                  <p>• {{ n }}</p>
+                }
+                @if (noteList().length > 1) {
+                  <ion-button fill="clear" size="small" (click)="showAllNotes.set(!showAllNotes())">
+                    {{ showAllNotes() ? 'Ver menos' : 'Ver ' + (noteList().length - 1) + ' más' }}
+                  </ion-button>
+                }
+              </ion-card-content>
+            </ion-card>
+          }
+
+          <app-evidence-card [routine]="r"></app-evidence-card>
 
           @if (!r.is_active) {
             <ion-button expand="block" size="large" [disabled]="saving()" (click)="useThis(r.id)">
@@ -246,7 +376,9 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
                 {{ generating() ? 'Generando…' : 'Generar una rutina nueva' }}
               </ion-button>
               <p class="hint ion-text-center">Tu rutina actual queda guardada en "Mis rutinas".</p>
-              <ion-button expand="block" fill="clear" routerLink="/crear-rutina">✍️ O créala tú a mano</ion-button>
+              <ion-button expand="block" fill="clear" routerLink="/crear-rutina"
+                ><ion-icon slot="start" name="create-outline"></ion-icon>O créala tú a mano</ion-button
+              >
             </div>
           }
         } @else {
@@ -259,6 +391,14 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
       </div>
     </ion-content>
 
+    <app-exercise-picker
+      [open]="pickerOpen()"
+      [allowed]="allowed()"
+      [exclude]="draftIds()"
+      (picked)="addExercise($event)"
+      (closed)="pickerOpen.set(false)"
+    ></app-exercise-picker>
+
     <app-tab-bar [active]="id() ? 'rutinas' : 'rutina'"></app-tab-bar>
   `,
   styles: `
@@ -268,7 +408,8 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
       align-items: center;
       padding: 48px 0;
     }
-    .title {
+    .page h1.title {
+      font-size: 1.3rem;
       margin-bottom: 4px;
     }
     .offline {
@@ -283,6 +424,14 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
     .notes p {
       white-space: normal;
       margin: 4px 0;
+    }
+    .tech {
+      margin: 8px 0 2px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ion-color-medium);
     }
     .notes-title {
       font-weight: 600;
@@ -303,6 +452,30 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
     }
     .rx {
       font-weight: 600;
+    }
+    .day-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .day-head h2 {
+      flex: 1 1 100%;
+    }
+    .tools {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 4px;
+      margin-top: 10px;
+    }
+    .tools .grp {
+      display: flex;
+      gap: 6px;
+    }
+    .tools ion-button {
+      margin: 0;
     }
     .steps {
       margin: 8px 0 0;
@@ -326,6 +499,7 @@ export class RoutinePage implements OnInit, ViewWillEnter {
   private readonly router = inject(Router);
   private readonly alerts = inject(AlertController);
   private readonly toasts = inject(ToastController);
+  private readonly modals = inject(ModalController);
 
   readonly loading = signal(true);
   readonly loadError = signal('');
@@ -337,14 +511,28 @@ export class RoutinePage implements OnInit, ViewWillEnter {
   readonly place = signal('');
   readonly selectedDay = signal(0);
   readonly showAllNotes = signal(false);
+  /** En "Mi rutina" se ve 1 ejercicio; el botón muestra el día completo. */
+  readonly showFull = signal(false);
+
+  shown<T>(list: T[]): T[] {
+    return this.showFull() ? list : list.slice(0, 1);
+  }
   readonly updated = signal(false);
   private readonly openIds = signal<Set<string>>(new Set());
+
+  // ---- Edición de un día ----
+  readonly editing = signal(false);
+  readonly draft = signal<StoredExercise[]>([]);
+  readonly pickerOpen = signal(false);
+  readonly allowed = signal<Set<string>>(new Set());
+  readonly draftIds = computed(() => this.draft().map((e) => e.exercise_id));
+  private pickerCtx: Awaited<ReturnType<RoutineService['pickerContext']>> | null = null;
 
   readonly places = computed(() =>
     (this.profiles.health()?.places ?? []).map((p) => ({ value: p, label: labelOf(PLACE_OPTIONS, p) })),
   );
   readonly noteList = computed(() => (this.routine()?.notes ?? '').split('\n').filter((n) => n.trim().length > 0));
-  readonly visibleNotes = computed(() => (this.showAllNotes() ? this.noteList() : this.noteList().slice(0, 2)));
+  readonly visibleNotes = computed(() => (this.showAllNotes() ? this.noteList() : this.noteList().slice(0, 1)));
   readonly currentDay = computed(() => {
     const days = this.routine()?.routine_days ?? [];
     return days[this.selectedDay()] ?? days[0] ?? null;
@@ -354,7 +542,25 @@ export class RoutinePage implements OnInit, ViewWillEnter {
   readonly cues = techniqueCues;
 
   constructor() {
-    addIcons({ checkmarkCircle, chevronDown, chevronUp, cloudOfflineOutline, play, timeOutline });
+    addIcons({
+      addCircleOutline,
+      arrowDownOutline,
+      arrowUpOutline,
+      checkmarkCircle,
+      chevronDown,
+      chevronUp,
+      listOutline,
+      cloudOfflineOutline,
+      createOutline,
+      create,
+      play,
+      repeatOutline,
+      saveOutline,
+      timeOutline,
+      trashOutline,
+      closeOutline,
+      pencilOutline,
+    });
     // Ionic reutiliza la página: se escucha el parámetro aunque la vista ya exista.
     inject(ActivatedRoute)
       .queryParamMap.pipe(takeUntilDestroyed())
@@ -395,7 +601,7 @@ export class RoutinePage implements OnInit, ViewWillEnter {
       // Tesler: si aún no hay rutina, se genera sola con lo que ya respondió.
       if (!id && !this.routine() && first) {
         this.loading.set(false);
-        await this.generate();
+        if (await askGear(this.modals, first)) await this.generate();
       }
     } catch {
       this.loadError.set('No se pudo cargar tu rutina. Revisa tu internet e inténtalo de nuevo.');
@@ -420,8 +626,10 @@ export class RoutinePage implements OnInit, ViewWillEnter {
   }
 
   selectDay(value: unknown) {
+    this.editing.set(false);
     this.selectedDay.set(Number(value ?? 0));
     this.openIds.set(new Set());
+    this.showFull.set(false);
   }
 
   placeLabel(p: string | null): string {
@@ -455,6 +663,183 @@ export class RoutinePage implements OnInit, ViewWillEnter {
       return parts.length > 1 ? parts.slice(0, -1).join('. ') : null;
     }
     return e.notes;
+  }
+
+  // ---------- Edición ----------
+
+  isTimed(e: StoredExercise): boolean {
+    return e.reps_min === 1 && e.reps_max === 1;
+  }
+
+  async startEdit() {
+    const day = this.currentDay();
+    const r = this.routine();
+    if (!day || !r) return;
+    this.draft.set(day.routine_exercises.map((e) => ({ ...e })));
+    this.editing.set(true);
+    try {
+      this.pickerCtx = await this.routines.pickerContext(r);
+      this.allowed.set(this.pickerCtx.allowed);
+    } catch {
+      this.pickerCtx = null;
+    }
+  }
+
+  cancelEdit() {
+    this.editing.set(false);
+    this.draft.set([]);
+  }
+
+  move(i: number, dir: -1 | 1) {
+    this.draft.update((list) => {
+      const next = [...list];
+      const j = i + dir;
+      if (j < 0 || j >= next.length) return list;
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  async removeAt(i: number) {
+    const item = this.draft()[i];
+    const ex = item ? this.catalog.byId().get(item.exercise_id) : undefined;
+    const ok = await this.confirm(
+      'Quitar ejercicio',
+      `¿Quitar "${ex ? this.name(ex) : 'este ejercicio'}" de este día?`,
+      'Quitar',
+    );
+    if (ok) this.draft.update((list) => list.filter((_, n) => n !== i));
+  }
+
+  async editSets(i: number) {
+    const e = this.draft()[i];
+    if (!e) return;
+    const alert = await this.alerts.create({
+      header: 'Series y repeticiones',
+      inputs: [
+        { name: 'sets', type: 'number', label: 'Series', value: e.sets, min: 1, max: 10, placeholder: 'Series' },
+        { name: 'reps_min', type: 'number', value: e.reps_min, min: 1, max: 100, placeholder: 'Repeticiones mínimas' },
+        { name: 'reps_max', type: 'number', value: e.reps_max, min: 1, max: 100, placeholder: 'Repeticiones máximas' },
+        { name: 'rest', type: 'number', value: e.rest_seconds, min: 0, max: 600, placeholder: 'Descanso (segundos)' },
+      ],
+      buttons: [
+        { text: 'Cancelar', role: 'cancel' },
+        { text: 'Aplicar', role: 'confirm' },
+      ],
+    });
+    await alert.present();
+    const { role, data } = await alert.onDidDismiss();
+    if (role !== 'confirm') return;
+    const v = data?.values ?? {};
+    const sets = Math.round(Number(v.sets));
+    const min = Math.round(Number(v.reps_min));
+    const max = Math.round(Number(v.reps_max));
+    const rest = Math.round(Number(v.rest));
+    if (
+      ![sets, min, max, rest].every(Number.isFinite) ||
+      sets < 1 ||
+      sets > 10 ||
+      min < 1 ||
+      max < min ||
+      max > 100 ||
+      rest < 0 ||
+      rest > 600
+    ) {
+      await this.toast('Revisa los números: series 1 a 10, repeticiones mínimas ≤ máximas, descanso 0 a 600 s.');
+      return;
+    }
+    this.draft.update((list) =>
+      list.map((x, n) => (n === i ? { ...x, sets, reps_min: min, reps_max: max, rest_seconds: rest } : x)),
+    );
+  }
+
+  async swapAt(i: number) {
+    const r = this.routine();
+    const e = this.draft()[i];
+    if (!r || !e) return;
+    let alts;
+    try {
+      alts = await this.routines.alternatives(r, e.exercise_id);
+    } catch {
+      await this.toast('No se pudieron buscar alternativas. Revisa tu internet.');
+      return;
+    }
+    if (alts.length === 0) {
+      await this.toast('No hay alternativas seguras para este ejercicio. Puedes quitarlo y agregar otro.');
+      return;
+    }
+    const alert = await this.alerts.create({
+      header: 'Cambiar por…',
+      inputs: alts.map((a, n) => ({
+        type: 'radio' as const,
+        label: this.name(a.exercise),
+        value: n,
+        checked: n === 0,
+      })),
+      buttons: [
+        { text: 'Cancelar', role: 'cancel' },
+        { text: 'Cambiar', role: 'confirm' },
+      ],
+    });
+    await alert.present();
+    const { role, data } = await alert.onDidDismiss();
+    if (role !== 'confirm') return;
+    const pick = alts[Number(data?.values ?? 0)];
+    if (!pick) return;
+    this.draft.update((list) =>
+      list.map((x, n) => (n === i ? { ...x, ...pick.item, id: x.id, position: x.position } : x)),
+    );
+  }
+
+  async addExercise(ex: Exercise) {
+    this.pickerOpen.set(false);
+    if (this.draft().length >= 15) {
+      await this.toast('Máximo 15 ejercicios por día.');
+      return;
+    }
+    if (!this.allowed().has(ex.id)) {
+      const ok = await this.confirm(
+        'No recomendado para ti',
+        'Este ejercicio no encaja con tu equipo, nivel o lesiones. ¿Agregarlo igual?',
+        'Agregar',
+      );
+      if (!ok) return;
+    }
+    const rx = this.pickerCtx?.prescribe(ex).item ?? {
+      exercise_id: ex.id,
+      sets: 3,
+      reps_min: 8,
+      reps_max: 12,
+      rest_seconds: 90,
+      notes: null,
+    };
+    this.draft.update((list) => [...list, { id: `nuevo-${Date.now()}`, position: list.length + 1, ...rx }]);
+  }
+
+  async saveEdit(dayId: string) {
+    if (this.saving()) return;
+    this.saving.set(true);
+    try {
+      const items = this.draft().map((e) => ({
+        exercise_id: e.exercise_id,
+        sets: e.sets,
+        reps_min: e.reps_min,
+        reps_max: e.reps_max,
+        rest_seconds: e.rest_seconds,
+        notes: e.notes,
+      }));
+      const minutes = estimateMinutesFor(items, this.catalog.byId());
+      await this.routines.saveDay(dayId, items, minutes);
+      const id = this.id();
+      const { routine } = id ? { routine: await this.routines.loadById(id) } : await this.routines.loadActive();
+      this.routine.set(routine);
+      this.editing.set(false);
+      await this.toast('Cambios guardados.');
+    } catch {
+      await this.toast('No se pudo guardar. Revisa tu internet e inténtalo de nuevo.');
+    } finally {
+      this.saving.set(false);
+    }
   }
 
   toggleOpen(id: string) {
@@ -522,6 +907,7 @@ export class RoutinePage implements OnInit, ViewWillEnter {
       );
       if (!ok) return;
     }
+    if (!(await askGear(this.modals, this.place()))) return;
     await this.generate();
   }
 

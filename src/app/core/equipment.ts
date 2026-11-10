@@ -36,10 +36,42 @@ export const GEAR_OPTIONS: GearOption[] = [
   { value: 'foam_roller', label: 'Rodillo de espuma', group: 'Accesorios' },
 ];
 
+/**
+ * Implementos adicionales que aparecen en el dataset de ejercicios. Cada uno se reconoce por el
+ * nombre del ejercicio: si lo marcas, se desbloquean esos ejercicios; si no, nunca se recomiendan.
+ * En la pantalla solo se ofrecen los que el dataset cargado realmente usa.
+ */
+export const EXTRA_GEAR: (GearOption & { match: RegExp })[] = [
+  { value: 'cadenas', label: 'Cadenas para barra', group: 'Más implementos', match: /chains?\b/ },
+  { value: 'cajon', label: 'Cajón o plataforma (box)', group: 'Más implementos', match: /\bbox(es)?\b/ },
+  { value: 'bosu', label: 'Bosu / tabla de equilibrio', group: 'Más implementos', match: /bosu|balance board/ },
+  { value: 'barra_trampa', label: 'Barra hexagonal (trap bar)', group: 'Más implementos', match: /trap bar/ },
+  { value: 'barra_seguridad', label: 'Barra de seguridad (safety bar)', group: 'Más implementos', match: /safety bar/ },
+  { value: 'trineo', label: 'Trineo o rickshaw', group: 'Más implementos', match: /\bsled|rickshaw/ },
+  { value: 'rueda_abdominal', label: 'Rueda abdominal', group: 'Más implementos', match: /wheel/ },
+  { value: 'anillas', label: 'Anillas o TRX (suspensión)', group: 'Más implementos', match: /suspended|iron cross/ },
+  {
+    value: 'strongman',
+    label: 'Strongman (yugo, neumático, piedras, tronco, farmer, jammer)',
+    group: 'Más implementos',
+    match: /axle|atlas|\blog\b|yoke|\btires?\b|stones?\b|farmer|jammer/,
+  },
+];
+
+/** Implementos extra que el dataset usa, con cuántos ejercicios desbloquea cada uno. */
+export function gearCounts(exercises: Exercise[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const ex of exercises) for (const g of requiredGear(ex) ?? []) out.set(g, (out.get(g) ?? 0) + 1);
+  return out;
+}
+
 export const GEAR_GROUPS = ['Pesas libres', 'Máquinas y cardio', 'Calistenia', 'Accesorios'].map((name) => ({
   name,
   items: GEAR_OPTIONS.filter((g) => g.group === name),
 }));
+
+/** Todo lo que se puede marcar: lo básico más los implementos extra del dataset. */
+export const ALL_GEAR: GearOption[] = [...GEAR_OPTIONS, ...EXTRA_GEAR];
 
 /**
  * Smart Fit no publica un listado de máquinas (su web solo muestra zonas: cardio, peso integrado,
@@ -82,13 +114,16 @@ export const CALISTHENICS_GEAR = ['barra_dominadas', 'paralelas', 'bandas'];
  * Movimientos que necesitan implementos que ni siquiera ofrecemos marcar (cadenas, cajones,
  * trineos, piedras, barras especiales, etc.). Se descartan para no recomendar algo inviable.
  */
-const EXOTIC =
-  /chains?\b|\bboxes?\b|\bpins?\b|bosu|balance board|axle|atlas|\blog\b|yoke|\btires?\b|\bsled|rickshaw|zercher|trap bar|safety bar|farmer|jammer|car driver|speed |wheel|iron cross|with a twist|suspended|\bcar\b|stones?\b|hanging bar|kneeling squat/;
+const EXOTIC = /zercher|car driver|speed |with a twist|\bcar\b|kneeling squat/;
 
 export function requiredGear(ex: Exercise): string[] | null {
   const name = ex.name.toLowerCase();
   if (EXOTIC.test(name)) return null;
   const need = new Set<string>();
+  const extras = EXTRA_GEAR.filter((x) => x.match.test(name));
+  for (const x of extras) need.add(x.value);
+  if (/\bpins?\b/.test(name)) need.add('rack');
+  if (/hanging bar/.test(name)) need.add('barra_dominadas');
 
   switch (ex.equipment) {
     case 'barbell':
@@ -127,7 +162,7 @@ export function requiredGear(ex: Exercise): string[] | null {
       break;
     default:
       // "other" y valores desconocidos: solo se aceptan los estiramientos (en el suelo).
-      if (ex.category !== 'stretching') return null;
+      if (ex.category !== 'stretching' && extras.length === 0) return null;
   }
 
   if (/\bbands?\b/.test(name)) need.add('bandas');

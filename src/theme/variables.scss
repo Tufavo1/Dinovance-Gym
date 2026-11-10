@@ -1,11 +1,84 @@
-// For information on how to create your own theme, please refer to:
-// https://ionicframework.com/docs/theming/
-
+// Paleta Dinovance: azul noche del logo + verde azulado (teal) + crema.
 :root {
-  --ion-color-primary: #16a34a;
-  --ion-color-primary-rgb: 22, 163, 74;
+  --ion-color-primary: #0e7490;
+  --ion-color-primary-rgb: 14, 116, 144;
   --ion-color-primary-contrast: #ffffff;
   --ion-color-primary-contrast-rgb: 255, 255, 255;
-  --ion-color-primary-shade: #138f41;
-  --ion-color-primary-tint: #2dac5c;
+  --ion-color-primary-shade: #0c667f;
+  --ion-color-primary-tint: #2683a0;
+
+  --ion-color-secondary: #22d3ee;
+  --ion-color-secondary-rgb: 34, 211, 238;
+  --ion-color-secondary-contrast: #062a33;
+  --ion-color-secondary-contrast-rgb: 6, 42, 51;
+  --ion-color-secondary-shade: #1dbad1;
+  --ion-color-secondary-tint: #38d7f0;
+
+  --ion-color-tertiary: #f59e0b;
+  --ion-color-tertiary-rgb: 245, 158, 11;
+  --ion-color-tertiary-contrast: #1f1400;
+  --ion-color-tertiary-contrast-rgb: 31, 20, 0;
+  --ion-color-tertiary-shade: #d88b09;
+  --ion-color-tertiary-tint: #f6a823;
+
+  --ion-color-success: #15803d;
+  --ion-color-success-rgb: 21, 128, 61;
+  --ion-color-success-contrast: #ffffff;
+  --ion-color-success-contrast-rgb: 255, 255, 255;
+  --ion-color-success-shade: #13713a;
+  --ion-color-success-tint: #2a8d52;
+
+  --ion-background-color: #f4f7fa;
+  --ion-background-color-rgb: 244, 247, 250;
+  --ion-text-color: #0f172a;
+  --ion-text-color-rgb: 15, 23, 42;
+  --ion-color-medium: #5b6b7f;
+  --ion-color-light: #e8eef4;
+  --ion-item-background: #ffffff;
+  --ion-card-background: #ffffff;
+  --ion-toolbar-background: #0f172a;
+  --ion-toolbar-color: #ffffff;
+  --ion-tab-bar-background: #ffffff;
+  --ion-tab-bar-color: #5b6b7f;
+  --ion-tab-bar-color-selected: #0e7490;
+  --ion-font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --dv-chart2: #0891b2;
+  --dv-radius: 16px;
+  --dv-border: rgba(15, 23, 42, 0.08);
+  --dv-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 4px 14px rgba(15, 23, 42, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  :root.md,
+  :root.ios {
+    --ion-color-primary: #22d3ee;
+    --ion-color-primary-rgb: 34, 211, 238;
+    --ion-color-primary-contrast: #062a33;
+    --ion-color-primary-contrast-rgb: 6, 42, 51;
+    --ion-color-primary-shade: #1dbad1;
+    --ion-color-primary-tint: #38d7f0;
+    --ion-color-success: #4ade80;
+    --ion-color-success-rgb: 74, 222, 128;
+    --ion-color-success-contrast: #052e16;
+    --ion-color-success-shade: #41c471;
+    --ion-color-success-tint: #5ce18d;
+
+    --ion-background-color: #0b1220;
+    --ion-background-color-rgb: 11, 18, 32;
+    --ion-text-color: #e6edf5;
+    --ion-text-color-rgb: 230, 237, 245;
+    --ion-color-medium: #93a3b8;
+    --ion-color-light: #17233a;
+    --ion-item-background: #121d33;
+    --ion-card-background: #121d33;
+    --ion-toolbar-background: #0b1220;
+    --ion-tab-bar-background: #0f1a2e;
+    --ion-tab-bar-color: #93a3b8;
+    --ion-tab-bar-color-selected: #22d3ee;
+    --dv-chart2: #22d3ee;
+    --dv-border: rgba(255, 255, 255, 0.08);
+    --dv-shadow: none;
+  }
 }

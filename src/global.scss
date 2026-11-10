@@ -10,20 +10,20 @@
  */
 
 /* Core CSS required for Ionic components to work properly */
-@import "@ionic/angular/css/core.css";
+@import '@ionic/angular/css/core.css';
 
 /* Basic CSS for apps built with Ionic */
-@import "@ionic/angular/css/normalize.css";
-@import "@ionic/angular/css/structure.css";
-@import "@ionic/angular/css/typography.css";
-@import "@ionic/angular/css/display.css";
+@import '@ionic/angular/css/normalize.css';
+@import '@ionic/angular/css/structure.css';
+@import '@ionic/angular/css/typography.css';
+@import '@ionic/angular/css/display.css';
 
 /* Optional CSS utils that can be commented out */
-@import "@ionic/angular/css/padding.css";
-@import "@ionic/angular/css/float-elements.css";
-@import "@ionic/angular/css/text-alignment.css";
-@import "@ionic/angular/css/text-transformation.css";
-@import "@ionic/angular/css/flex-utils.css";
+@import '@ionic/angular/css/padding.css';
+@import '@ionic/angular/css/float-elements.css';
+@import '@ionic/angular/css/text-alignment.css';
+@import '@ionic/angular/css/text-transformation.css';
+@import '@ionic/angular/css/flex-utils.css';
 
 /**
  * Ionic Dark Mode
@@ -129,4 +129,161 @@ ion-list.group {
 .optional ion-accordion ion-item[slot='header'] {
   --background: transparent;
   font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+ * Identidad Dinovance: tarjetas limpias, botones legibles (sin mayúsculas), barra
+ * superior azul noche y tipografía más ordenada.
+ * ------------------------------------------------------------------------ */
+ion-header ion-toolbar {
+  --background: var(--ion-toolbar-background);
+  --color: var(--ion-toolbar-color);
+  --border-width: 0;
+}
+ion-footer ion-toolbar {
+  --background: var(--ion-card-background);
+  --border-color: var(--dv-border);
+}
+ion-toolbar ion-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+ion-header ion-toolbar ion-button,
+ion-header ion-toolbar ion-back-button {
+  --color: #fff;
+  min-height: 40px;
+}
+ion-header ion-progress-bar {
+  --background: rgba(255, 255, 255, 0.15);
+}
+ion-header::after {
+  display: none;
+}
+
+ion-button {
+  --box-shadow: none;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 1rem;
+}
+ion-button[size='small'] {
+  min-height: 36px;
+  font-size: 0.85rem;
+}
+ion-button[fill='outline'] {
+  --border-width: 1.5px;
+}
+
+ion-card {
+  --background: var(--ion-card-background);
+  margin: 12px 0;
+  border-radius: var(--dv-radius);
+  box-shadow: var(--dv-shadow);
+  border: 1px solid var(--dv-border);
+}
+ion-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+ion-card-header {
+  padding-bottom: 4px;
+}
+
+ion-list.group {
+  border: 1px solid var(--dv-border);
+  box-shadow: var(--dv-shadow);
+  border-radius: var(--dv-radius);
+}
+
+.page h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 8px 0 6px;
+}
+.page h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+ion-segment {
+  --background: var(--ion-color-light);
+  border-radius: 12px;
+  padding: 3px;
+}
+ion-segment-button {
+  --border-radius: 10px;
+  --indicator-color: var(--ion-card-background);
+  --color: var(--ion-color-medium);
+  --color-checked: var(--ion-color-primary);
+  text-transform: none;
+  font-weight: 600;
+  min-height: 40px;
+}
+ion-segment-button::part(indicator-background) {
+  box-shadow: var(--dv-shadow);
+}
+ion-tab-bar {
+  border-top: 1px solid var(--dv-border);
+  --border: none;
+  padding-top: 4px;
+}
+ion-tab-button {
+  font-size: 0.7rem;
+  --color-selected: var(--ion-color-primary);
+}
+ion-input,
+ion-select,
+ion-textarea {
+  --border-radius: 12px;
+  --background: var(--ion-card-background);
+}
+ion-badge {
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+/* Cabecera de marca con degradado, para Inicio y pantallas de acceso */
+.hero {
+  background: radial-gradient(120% 140% at 85% -10%, #155e75 0%, #0f172a 60%);
+  color: #fff;
+  padding: 20px 20px 56px;
+}
+.hero h1,
+.hero p {
+  color: #fff;
+}
+.hero .hint {
+  color: rgba(255, 255, 255, 0.72);
+}
+.sheet {
+  position: relative;
+  margin-top: -28px;
+  background: var(--ion-background-color);
+  border-radius: 24px 24px 0 0;
+  padding-top: 24px;
+}
+
+/* Botones dentro de barras inferiores: la barra es clara, no azul noche. */
+ion-footer ion-toolbar ion-button {
+  --color: var(--ion-color-primary-contrast);
+  --background: var(--ion-color-primary);
+}
+ion-footer ion-toolbar ion-button[fill='outline'] {
+  --color: var(--ion-color-primary);
+  --background: transparent;
+  --border-color: var(--ion-color-primary);
+}
+ion-footer ion-toolbar ion-button[fill='clear'] {
+  --color: var(--ion-color-primary);
+  --background: transparent;
+}
+
+// Objetivos táctiles de al menos 44 px (WCAG 2.5.5 / guías móviles).
+ion-button {
+  min-height: 44px;
+  --padding-top: 10px;
+  --padding-bottom: 10px;
+}
+ion-button::part(native) {
+  min-height: 44px;
 }

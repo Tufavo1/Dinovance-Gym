@@ -1,10 +1,15 @@
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { addIcons } from 'ionicons';
+import { createOutline } from 'ionicons/icons';
+import { HeaderActionsComponent } from '../../shared/header-actions.component';
 import {
   IonBadge,
   IonButton,
   IonContent,
+  IonButtons,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -27,6 +32,9 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
   selector: 'app-routines',
   imports: [
     RouterLink,
+    IonButtons,
+    IonIcon,
+    HeaderActionsComponent,
     IonHeader,
     IonToolbar,
     IonTitle,
@@ -46,6 +54,7 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
     <ion-header>
       <ion-toolbar>
         <ion-title>Mis rutinas</ion-title>
+        <ion-buttons slot="end"><app-header-actions></app-header-actions></ion-buttons>
       </ion-toolbar>
     </ion-header>
 
@@ -64,9 +73,13 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
           <h1>Aún no tienes rutinas</h1>
           <p class="hint">Cuando generes una, quedará guardada aquí.</p>
           <ion-button expand="block" size="large" routerLink="/rutina">Generar mi rutina</ion-button>
-          <ion-button expand="block" fill="outline" routerLink="/crear-rutina">✍️ Crear mi rutina a mano</ion-button>
+          <ion-button expand="block" fill="outline" routerLink="/crear-rutina"
+            ><ion-icon slot="start" name="create-outline"></ion-icon>Crear mi rutina a mano</ion-button
+          >
         } @else {
-          <ion-button expand="block" fill="outline" routerLink="/crear-rutina">✍️ Crear mi rutina a mano</ion-button>
+          <ion-button expand="block" fill="outline" routerLink="/crear-rutina"
+            ><ion-icon slot="start" name="create-outline"></ion-icon>Crear mi rutina a mano</ion-button
+          >
           <p class="hint">Todas tus rutinas. Toca una para verla o volver a usarla.</p>
           <ion-list lines="full" class="group">
             @for (r of items(); track r.id) {
@@ -97,6 +110,10 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
 })
 export class RoutinesPage implements ViewDidEnter {
   private readonly routines = inject(RoutineService);
+
+  constructor() {
+    addIcons({ createOutline });
+  }
 
   readonly loading = signal(true);
   readonly error = signal('');

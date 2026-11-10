@@ -1,7 +1,9 @@
 <ion-header>
   <ion-toolbar>
-    <ion-title>Avanza</ion-title>
+    <img slot="start" class="mark" src="assets/icon/icon-192.png" alt="" width="30" height="30" />
+    <ion-title>Dinovance</ion-title>
     <ion-buttons slot="end">
+      <app-header-actions></app-header-actions>
       <ion-button aria-label="Cerrar sesión" (click)="logout()">
         <ion-icon slot="icon-only" name="log-out-outline"></ion-icon>
       </ion-button>
@@ -10,11 +12,21 @@
 </ion-header>
 
 <ion-content>
-  <div class="page">
-    <h1>Hola{{ firstName() ? ', ' + firstName() : '' }} 👋</h1>
-
+  <div class="hero">
+    <p class="hint">{{ greeting() }}</p>
+    <h1>{{ firstName() || 'Atleta' }}</h1>
+    @if (week(); as w) {
+      <div class="week-head">
+        <span>Esta semana</span>
+        <strong>{{ w.done }} de {{ w.goal }}</strong>
+      </div>
+      <ion-progress-bar [value]="w.done / w.goal" color="secondary"></ion-progress-bar>
+      <p class="hint">{{ w.message }}</p>
+    }
+  </div>
+  <div class="page sheet">
     <!-- Una sola acción principal: lo que toca hoy (Hick + Fitts) -->
-    <ion-card class="cta" color="primary">
+    <ion-card class="cta">
       <ion-card-header>
         <ion-card-subtitle>Hoy te toca</ion-card-subtitle>
         <ion-card-title>{{ todayTitle() }}</ion-card-title>
@@ -22,24 +34,13 @@
       <ion-card-content>
         <p>{{ todayDetail() }}</p>
         @if (today(); as t) {
-          <ion-button expand="block" size="large" color="light" [routerLink]="['/entrenar', t.id]">Empezar</ion-button>
-          <ion-button expand="block" fill="clear" color="light" routerLink="/rutina">Ver la rutina completa</ion-button>
+          <ion-button expand="block" size="large" [routerLink]="['/entrenar', t.id]">Empezar</ion-button>
+          <ion-button expand="block" fill="clear" routerLink="/rutina">Ver la rutina completa</ion-button>
         } @else {
           <ion-button expand="block" size="large" color="light" routerLink="/rutina">Generar mi rutina</ion-button>
         }
       </ion-card-content>
     </ion-card>
-
-    @if (week(); as w) {
-      <section class="week" aria-label="Progreso de la semana">
-        <div class="week-head">
-          <span>Esta semana</span>
-          <strong>{{ w.done }} de {{ w.goal }}</strong>
-        </div>
-        <ion-progress-bar [value]="w.done / w.goal" color="success"></ion-progress-bar>
-        <p class="hint">{{ w.message }}</p>
-      </section>
-    }
 
     @if (summary(); as s) {
       <ion-card>

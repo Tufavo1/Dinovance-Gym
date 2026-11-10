@@ -1,5 +1,7 @@
 import type { Exercise } from '../models';
 import { patternOf } from '../routine/rules';
+import type { StrengthMarks } from '../models';
+import { LIFT_GROUPS, markE1rm } from './benchmarks';
 import { e1rm, loadFor, pctOf1RM } from './strength-math';
 
 /**
@@ -39,6 +41,8 @@ export interface LoadAthlete {
   beginner: boolean;
   senior: boolean;
   cautious: boolean;
+  /** Marcas de fuerza (PR) de la persona: si existen, reemplazan la estimación por peso corporal. */
+  marks?: StrengthMarks;
 }
 
 export interface LoadTarget {
@@ -190,9 +194,7 @@ export function adviseLoad(
   }
 
   // ---- Primera vez: e1RM estimado desde el perfil ----
-  const r = RATIOS[pattern] ?? DEFAULT_RATIO;
   const kind = mode === 'mancuerna' ? 'mancuerna' : ex.equipment === 'barbell' ? 'total' : 'maquina';
-  const ratio = r[kind] ?? r.total ?? r.maquina ?? DEFAULT_RATIO[kind];
 
   const lower = LOWER.has(pattern);
   const sex =
@@ -201,9 +203,28 @@ export function adviseLoad(
   const age = athlete.senior ? 0.75 : 1;
   const care = athlete.cautious ? 0.85 : 1;
 
-  const tenRm = bw * ratio * sex * level * age * care;
+  const baseTenRm = (pat: string, k: 'total' | 'maquina' | 'mancuerna') => {
+    const rr = RATIOS[pat] ?? DEFAULT_RATIO;
+    const rt = rr[k] ?? rr.total ?? rr.maquina ?? DEFAULT_RATIO[k];
+    return bw * rt * sex * level * age * care;
+  };
+  let tenRm = baseTenRm(pattern, kind);
+
+  // Con marcas propias (PR), el peso parte de lo que la persona ya levanta: se compara su 10RM
+  // real con el que la fórmula supone para ese levantamiento y se escala el patrón relacionado.
+  let personal = false;
+  const refs = (LIFT_GROUPS[pattern] ?? []).filter((l) => markE1rm(athlete.marks?.[l]) !== null);
+  if (refs.length > 0) {
+    const factors = refs.map((l) => {
+      const mine = (markE1rm(athlete.marks?.[l])! * pctOf1RM(10)) / 100;
+      return mine / baseTenRm(l, 'total');
+    });
+    const f = factors.reduce((a, b) => a + b, 0) / factors.length;
+    tenRm *= Math.min(3, Math.max(0.5, f));
+    personal = true;
+  }
   const estimated1rm = tenRm / (pctOf1RM(10) / 100);
-  let kg = loadFor(estimated1rm, target.reps_max, rirLow) * 0.9; // 10 % extra de margen la primera vez
+  let kg = loadFor(estimated1rm, target.reps_max, rirLow) * (personal ? 0.95 : 0.9); // margen la primera vez
 
   const step = loadStep(mode, kg);
   kg = roundTo(kg, step);
@@ -212,7 +233,9 @@ export function adviseLoad(
     kg,
     mode,
     step,
-    reason: 'Es un peso de partida: si la 1.ª serie se siente muy fácil o muy difícil, ajústalo.',
+    reason: personal
+      ? 'Calculado con tu marca de fuerza. Ajústalo tras la 1.ª serie.'
+      : 'Es un peso de partida: si la 1.ª serie se siente muy fácil o muy difícil, ajústalo.',
   };
 }
 

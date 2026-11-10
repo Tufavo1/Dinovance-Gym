@@ -187,7 +187,7 @@ describe('generateRoutine', () => {
       .filter((id) => nameOf(id) !== 'Barbell Hip Thrust')
       .map((id) => CATALOG.find((e) => e.id === id)!.level);
     expect(levels).not.toContain('intermediate');
-    expect(r.notes.join(' ')).toContain('más de 6 meses');
+    expect(r.notes.join(' ')).toContain('Más de 6 meses');
   });
 
   it('una sesión corta tiene menos ejercicios que una larga', () => {
@@ -207,10 +207,10 @@ describe('generateRoutine', () => {
     expect(cardio?.notes).toContain('minutos');
   });
 
-  it('principiante: nunca menos de 8 repeticiones', () => {
+  it('principiante: nunca menos de 6 repeticiones (técnica primero)', () => {
     const r = run({ goal: 'fuerza', training_styles: ['fuerza'] });
     for (const e of r.days.flatMap((d) => d.exercises)) {
-      if (e.reps_max > 1) expect(e.reps_min).toBeGreaterThanOrEqual(8);
+      if (e.reps_max > 1) expect(e.reps_min).toBeGreaterThanOrEqual(6);
     }
   });
 
@@ -225,12 +225,44 @@ describe('generateRoutine', () => {
     const injuries: InjuryRecord[] = [
       { id: 'i2', body_area: 'hombro', kind: 'lesion', status: 'activa', year: null, description: null },
     ];
-    const r = run({ experience: 'intermedio' }, { injuries });
+    const r = run({ experience: 'intermedio', days_per_week: 5 }, { injuries });
     expect(r.days.every((d) => d.name.includes('Cuerpo completo'))).toBe(true);
     const names = allIds(r).map(nameOf);
     expect(names).not.toContain('Leverage Shoulder Press');
     expect(names).not.toContain('Plank');
     expect(r.notes.join(' ')).toContain('cuerpo completo');
+  });
+
+  it('cada músculo grande se entrena al menos 2 veces por semana con 3 días (Schoenfeld 2016)', () => {
+    const r = run({ experience: 'intermedio', days_per_week: 3 });
+    expect(r.days.every((d) => d.name.includes('Cuerpo completo'))).toBe(true);
+  });
+
+  it('el volumen semanal por músculo respeta el rango del programa', () => {
+    const r = run({ experience: 'intermedio', days_per_week: 4, session_minutes: 90 });
+    const sets = new Map<string, number>();
+    for (const e of r.days.flatMap((d) => d.exercises)) {
+      const ex = CATALOG.find((c) => c.id === e.exercise_id)!;
+      if (ex.category !== 'strength' || e.reps_max === 1) continue;
+      sets.set(ex.primary_muscles[0], (sets.get(ex.primary_muscles[0]) ?? 0) + e.sets);
+    }
+    expect(sets.get('chest') ?? 0).toBeGreaterThanOrEqual(8);
+    expect(sets.get('chest') ?? 0).toBeLessThanOrEqual(16);
+  });
+
+  it('alta intensidad: pocas series y máximo 3 días, solo con experiencia', () => {
+    const r = run({ experience: 'intermedio', days_per_week: 5, training_approach: 'alta_intensidad' });
+    expect(r.days).toHaveLength(3);
+    for (const e of r.days.flatMap((d) => d.exercises)) if (e.reps_max > 1) expect(e.sets).toBeLessThanOrEqual(2);
+    expect(r.notes.join(' ')).toContain('muy exigentes');
+    // Un principiante no recibe alta intensidad.
+    const b = run({ experience: 'principiante', days_per_week: 5, training_approach: 'alta_intensidad' });
+    expect(b.days).toHaveLength(5);
+  });
+
+  it('recomienda proteína según el peso y la fase nutricional', () => {
+    const r = run({ nutrition_phase: 'deficit' }, { weightKg: 80 });
+    expect(r.notes.join(' ')).toContain('160-192 g');
   });
 
   it('nunca propone ejercicios marcados como "no me gusta"', () => {

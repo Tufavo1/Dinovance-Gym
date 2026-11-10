@@ -28,6 +28,7 @@ import {
 } from '@ionic/angular';
 
 import { GEAR_GROUPS, PLACE_PRESETS } from '../../core/equipment';
+import { sanitizeFrequency, sanitizeMarks } from '../../core/training/benchmarks';
 import {
   BODY_AREA_OPTIONS,
   ACTIVITY_LEVEL_OPTIONS,
@@ -42,11 +43,17 @@ import {
   PAST_ACTIVITY_OPTIONS,
   PLACE_OPTIONS,
   PREGNANCY_OPTIONS,
+  APPROACH_OPTIONS,
+  NUTRITION_OPTIONS,
+  STRESS_OPTIONS,
+  STRENGTH_LIFTS,
+  FREQUENCY_GROUPS,
   SLEEP_OPTIONS,
   SPORT_OPTIONS,
   STYLE_OPTIONS,
   labelOf,
   type HealthInput,
+  type HealthProfile,
   type InjuryDraft,
 } from '../../core/models';
 import { ProfileService } from '../../core/profile.service';
@@ -491,6 +498,111 @@ const TOTAL_STEPS = 7;
               }
             </ion-select>
 
+            <p class="section-title">¿Cómo prefieres entrenar?</p>
+            <ion-list lines="full" class="group">
+              <ion-radio-group [value]="approach()" (ionChange)="approach.set($event.detail.value)">
+                @for (o of approachOptions; track o.value) {
+                  <ion-item>
+                    <ion-radio [value]="o.value" labelPlacement="end" justify="start">
+                      <div class="opt">
+                        {{ o.label }}
+                        @if (o.hint) {
+                          <small>{{ o.hint }}</small>
+                        }
+                      </div>
+                    </ion-radio>
+                  </ion-item>
+                }
+              </ion-radio-group>
+            </ion-list>
+
+            <p class="section-title">¿Cómo estás comiendo hoy?</p>
+            <ion-list lines="full" class="group">
+              <ion-radio-group [value]="nutritionPhase()" (ionChange)="nutritionPhase.set($event.detail.value)">
+                @for (o of nutritionOptions; track o.value) {
+                  <ion-item>
+                    <ion-radio [value]="o.value" labelPlacement="end" justify="start">
+                      <div class="opt">
+                        {{ o.label }}
+                        @if (o.hint) {
+                          <small>{{ o.hint }}</small>
+                        }
+                      </div>
+                    </ion-radio>
+                  </ion-item>
+                }
+              </ion-radio-group>
+            </ion-list>
+
+            <p class="section-title">¿Cuánto estrés tienes en tu día a día?</p>
+            <ion-list lines="full" class="group">
+              <ion-radio-group [value]="stressLevel()" (ionChange)="stressLevel.set($event.detail.value)">
+                @for (o of stressOptions; track o.value) {
+                  <ion-item>
+                    <ion-radio [value]="o.value" labelPlacement="end" justify="start">
+                      <div class="opt">
+                        {{ o.label }}
+                        @if (o.hint) {
+                          <small>{{ o.hint }}</small>
+                        }
+                      </div>
+                    </ion-radio>
+                  </ion-item>
+                }
+              </ion-radio-group>
+            </ion-list>
+
+            <p class="section-title">Tus marcas de fuerza (opcional)</p>
+            <p class="hint">
+              Tu mejor serie reciente en cada ejercicio: peso y repeticiones. Con eso calculamos tu RM y tus cargas. Si
+              no lo sabes, déjalo vacío.
+            </p>
+            @for (l of strengthLifts; track l.value) {
+              <div class="mark-row">
+                <span class="mark-name">{{ l.label }}</span>
+                @if (!l.bodyweight) {
+                  <ion-input
+                    label="kg"
+                    labelPlacement="floating"
+                    fill="outline"
+                    type="number"
+                    inputmode="decimal"
+                    [value]="markKg(l.value)"
+                    (ionInput)="setMark(l.value, 'kg', $event.detail.value ?? '')"
+                  ></ion-input>
+                }
+                <ion-input
+                  [label]="l.bodyweight ? 'máx. repeticiones' : 'repeticiones'"
+                  labelPlacement="floating"
+                  fill="outline"
+                  type="number"
+                  inputmode="numeric"
+                  [value]="markReps(l.value)"
+                  (ionInput)="setMark(l.value, 'reps', $event.detail.value ?? '')"
+                ></ion-input>
+              </div>
+            }
+            <p class="hint">Con más de 12 repeticiones el RM deja de ser confiable y no se usa para las cargas.</p>
+
+            <p class="section-title">¿Cuántas veces por semana quieres entrenar cada parte?</p>
+            <p class="hint">Si no eliges, la app decide. Menos de 2 veces rinde menos, así que lo subimos a 2.</p>
+            @for (g of frequencyGroups; track g.value) {
+              <ion-select
+                [label]="g.label"
+                labelPlacement="floating"
+                fill="outline"
+                interface="popover"
+                [value]="freqOf(g.value)"
+                (ionChange)="setFreq(g.value, $event.detail.value)"
+              >
+                <ion-select-option value="">Que decida la app</ion-select-option>
+                <ion-select-option value="1">1 vez</ion-select-option>
+                <ion-select-option value="2">2 veces</ion-select-option>
+                <ion-select-option value="3">3 veces</ion-select-option>
+                <ion-select-option value="4">4 veces</ion-select-option>
+              </ion-select>
+            }
+
             @if (gender() !== 'masculino') {
               <p class="section-title">¿Estás embarazada o tuviste un bebé hace poco?</p>
               <ion-list lines="full" class="group">
@@ -594,12 +706,12 @@ const TOTAL_STEPS = 7;
       <ion-toolbar>
         <div class="nav">
           @if (step() > 0) {
-            <ion-button fill="outline" (click)="back()" [disabled]="busy()">Atrás</ion-button>
+            <ion-button color="primary" fill="outline" (click)="back()" [disabled]="busy()">Atrás</ion-button>
           }
           @if (step() < total - 1) {
-            <ion-button class="primary" (click)="next()">Siguiente</ion-button>
+            <ion-button color="primary" class="primary" (click)="next()">Siguiente</ion-button>
           } @else {
-            <ion-button class="primary" (click)="finish()" [disabled]="busy() || !consent()">
+            <ion-button color="primary" class="primary" (click)="finish()" [disabled]="busy() || !consent()">
               {{ busy() ? 'Guardando...' : 'Finalizar' }}
             </ion-button>
           }
@@ -608,6 +720,17 @@ const TOTAL_STEPS = 7;
     </ion-footer>
   `,
   styles: `
+    .mark-row {
+      display: grid;
+      grid-template-columns: 1fr 88px 88px;
+      gap: 8px;
+      align-items: center;
+      margin: 8px 0;
+    }
+    .mark-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
     .nav {
       display: flex;
       gap: 12px;
@@ -670,6 +793,11 @@ export class OnboardingPage {
     this.activityLevel.set(h.activity_level ?? '');
     this.sleepHours.set(h.sleep_hours ?? '');
     this.pregnancy.set(h.pregnancy_status ?? 'no');
+    this.approach.set(h.training_approach ?? 'equilibrado');
+    this.nutritionPhase.set(h.nutrition_phase ?? 'no_se');
+    this.stressLevel.set(h.stress_level ?? 'medio');
+    this.marks.set(this.marksToForm(h.strength_marks));
+    this.freq.set(this.freqToForm(h.muscle_frequency));
     const injuries = this.profiles.injuries();
     this.hasInjuries.set(injuries.length > 0);
     this.injuries.set(
@@ -710,6 +838,11 @@ export class OnboardingPage {
       activityLevel: this.activityLevel(),
       sleepHours: this.sleepHours(),
       pregnancy: this.pregnancy(),
+      approach: this.approach(),
+      nutritionPhase: this.nutritionPhase(),
+      stressLevel: this.stressLevel(),
+      marks: this.marks(),
+      freq: this.freq(),
     };
   }
 
@@ -748,6 +881,11 @@ export class OnboardingPage {
       if (d.activityLevel) this.activityLevel.set(d.activityLevel);
       if (d.sleepHours) this.sleepHours.set(d.sleepHours);
       if (d.pregnancy) this.pregnancy.set(d.pregnancy);
+      if (d.approach) this.approach.set(d.approach);
+      if (d.nutritionPhase) this.nutritionPhase.set(d.nutritionPhase);
+      if (d.stressLevel) this.stressLevel.set(d.stressLevel);
+      if (d.marks) this.marks.set(d.marks);
+      if (d.freq) this.freq.set(d.freq);
       if (typeof d.step === 'number') this.step.set(Math.min(d.step, TOTAL_STEPS - 1));
     } catch {
       // Borrador dañado: se ignora y se parte de cero.
@@ -772,6 +910,9 @@ export class OnboardingPage {
   readonly activityLevelOptions = ACTIVITY_LEVEL_OPTIONS;
   readonly sleepOptions = SLEEP_OPTIONS;
   readonly pregnancyOptions = PREGNANCY_OPTIONS;
+  readonly approachOptions = APPROACH_OPTIONS;
+  readonly nutritionOptions = NUTRITION_OPTIONS;
+  readonly stressOptions = STRESS_OPTIONS;
 
   readonly step = signal(0);
   readonly adjustSmartfit = signal(false);
@@ -804,6 +945,51 @@ export class OnboardingPage {
   readonly activityLevel = signal('');
   readonly sleepHours = signal('');
   readonly pregnancy = signal('no');
+  readonly approach = signal('equilibrado');
+  readonly nutritionPhase = signal('no_se');
+  readonly stressLevel = signal('medio');
+  readonly strengthLifts = STRENGTH_LIFTS;
+  readonly frequencyGroups = FREQUENCY_GROUPS;
+  readonly marks = signal<Record<string, { kg: string; reps: string }>>({});
+  readonly freq = signal<Record<string, string>>({});
+
+  markKg = (l: string) => this.marks()[l]?.kg ?? '';
+  markReps = (l: string) => this.marks()[l]?.reps ?? '';
+  freqOf = (g: string) => this.freq()[g] ?? '';
+
+  setMark(lift: string, field: 'kg' | 'reps', value: string) {
+    this.marks.update((m) => ({ ...m, [lift]: { ...(m[lift] ?? { kg: '', reps: '' }), [field]: value } }));
+  }
+
+  setFreq(group: string, value: string) {
+    this.freq.update((f) => ({ ...f, [group]: value }));
+  }
+
+  private marksToForm(m: HealthProfile['strength_marks']): Record<string, { kg: string; reps: string }> {
+    const out: Record<string, { kg: string; reps: string }> = {};
+    for (const [k, v] of Object.entries(m ?? {}))
+      out[k] = { kg: v.kg === undefined ? '' : String(v.kg), reps: String(v.reps) };
+    return out;
+  }
+
+  private freqToForm(f: HealthProfile['muscle_frequency']): Record<string, string> {
+    return Object.fromEntries(Object.entries(f ?? {}).map(([k, v]) => [k, String(v)]));
+  }
+
+  /** Marcas y frecuencias listas para guardar (solo números válidos). */
+  private marksPayload() {
+    const raw: Record<string, { kg?: number; reps: number }> = {};
+    for (const [k, v] of Object.entries(this.marks())) {
+      if (v.reps.trim() === '') continue;
+      const bodyweight = STRENGTH_LIFTS.find((l) => l.value === k)?.bodyweight;
+      if (!bodyweight && v.kg.trim() === '') continue;
+      raw[k] = bodyweight || v.kg.trim() === '' ? { reps: Number(v.reps) } : { kg: Number(v.kg), reps: Number(v.reps) };
+    }
+    return sanitizeMarks(
+      raw,
+      STRENGTH_LIFTS.map((l) => l.value),
+    );
+  }
   readonly gender = computed(() => this.profiles.profile()?.gender ?? null);
 
   readonly hasMedical = signal(false);
@@ -961,6 +1147,11 @@ export class OnboardingPage {
         activity_level: this.activityLevel(),
         sleep_hours: this.sleepHours(),
         pregnancy_status: this.gender() === 'masculino' ? 'no' : this.pregnancy(),
+        training_approach: this.approach(),
+        nutrition_phase: this.nutritionPhase(),
+        stress_level: this.stressLevel(),
+        strength_marks: this.marksPayload(),
+        muscle_frequency: sanitizeFrequency(this.freq()),
         training_styles: this.styles(),
         training_styles_other: this.styles().includes('otro') ? this.stylesOther().trim() || null : null,
         has_medical_condition: this.hasMedical(),

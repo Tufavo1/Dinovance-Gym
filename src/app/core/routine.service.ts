@@ -7,8 +7,10 @@ import { localStore } from './local-store';
 import type { Exercise } from './models';
 import { ProfileService } from './profile.service';
 import {
+  allowedExerciseIds,
   findAlternatives,
   generateRoutine,
+  prescriptionFor,
   type Alternative,
   type GeneratedExercise,
   type GeneratedRoutine,
@@ -180,6 +182,26 @@ export class RoutineService {
     await this.loadActive().catch(() => undefined);
   }
 
+  /** Reemplaza todos los ejercicios de un día (agregar, quitar, reordenar o cambiar series). */
+  async saveDay(dayId: string, items: GeneratedExercise[], minutes: number | null): Promise<void> {
+    const { error } = await this.sb.rpc('replace_day_exercises', {
+      p_day_id: dayId,
+      p_exercises: items,
+      p_minutes: minutes,
+    });
+    if (error) throw error;
+    await this.loadActive().catch(() => undefined);
+  }
+
+  /** Ejercicios que sirven a la persona en este lugar y prescripción recomendada para uno nuevo. */
+  async pickerContext(routine: StoredRoutine) {
+    const input = await this.generatorInput(routine.place ?? this.profiles.health()?.places?.[0] ?? 'smartfit');
+    return {
+      allowed: allowedExerciseIds(input),
+      prescribe: (ex: Exercise) => prescriptionFor(input, ex),
+    };
+  }
+
   private avoidCache: string[] | null = null;
 
   /** Ejercicios que la persona marcó como "no me gusta". */
@@ -212,6 +234,7 @@ export class RoutineService {
       age: ageFrom(profile?.birth_date ?? null),
       gender: profile?.gender ?? null,
       avoid: await this.avoidList(),
+      weightKg: profile?.weight_kg ?? null,
       seed: `${uid}:${Date.now()}`,
     };
   }

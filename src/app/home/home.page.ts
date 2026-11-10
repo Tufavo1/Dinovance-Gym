@@ -28,6 +28,8 @@ import { GOAL_OPTIONS, PLACE_OPTIONS, STYLE_OPTIONS, labelOf } from '../core/mod
 import { ProfileService } from '../core/profile.service';
 import { RoutineService, type StoredRoutine } from '../core/routine.service';
 import { WorkoutService, type WorkoutProgress } from '../core/workout.service';
+import { HeaderActionsComponent } from '../shared/header-actions.component';
+import { MessageService } from '../core/message.service';
 import { TabBarComponent } from '../shared/tab-bar.component';
 
 @Component({
@@ -53,6 +55,7 @@ import { TabBarComponent } from '../shared/tab-bar.component';
     IonList,
     IonProgressBar,
     TabBarComponent,
+    HeaderActionsComponent,
   ],
 })
 export class HomePage implements ViewWillEnter {
@@ -62,6 +65,7 @@ export class HomePage implements ViewWillEnter {
   private readonly workouts = inject(WorkoutService);
   private readonly router = inject(Router);
   private readonly alerts = inject(AlertController);
+  private readonly messages = inject(MessageService);
 
   readonly loading = signal(true);
   private readonly routine = signal<StoredRoutine | null>(null);
@@ -98,9 +102,14 @@ export class HomePage implements ViewWillEnter {
     return {
       done,
       goal,
-      message: done >= goal ? '¡Cumpliste tu semana! 🎉' : 'Toca Empezar: la app te guía ejercicio por ejercicio.',
+      message: done >= goal ? '¡Cumpliste tu semana!' : 'Toca Empezar: la app te guía ejercicio por ejercicio.',
     };
   });
+
+  readonly greeting = () => {
+    const h = new Date().getHours();
+    return h < 12 ? 'Buenos días' : h < 20 ? 'Buenas tardes' : 'Buenas noches';
+  };
 
   readonly todayTitle = computed(() => {
     if (this.loading()) return 'Cargando…';
@@ -159,6 +168,7 @@ export class HomePage implements ViewWillEnter {
     if (role !== 'confirm') return;
     await this.auth.signOut();
     this.profiles.reset();
+    this.messages.reset();
     await this.router.navigateByUrl('/login', { replaceUrl: true });
   }
 }
