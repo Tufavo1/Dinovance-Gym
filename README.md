@@ -253,6 +253,11 @@ auditoría **axe-core** en 10 pantallas (claro y oscuro), revisión de cabeceras
 | `codeql.yml` | PR, push y semanal | Análisis estático de seguridad (`security-extended`) |
 | `dependabot.yml` | Semanal | Actualizaciones de npm y de GitHub Actions |
 
+Los workflows usan filtros de rutas: un cambio solo de documentación (README, `.md`, `.gitignore`,
+`robots.txt`…) **no dispara nada**. El despliegue solo corre si cambió `src/`, `supabase/`, `scripts/`,
+dependencias o configuración de build; CodeQL solo si cambió código (además de su corrida semanal).
+Cualquier workflow se puede forzar a mano desde Actions → *Run workflow*.
+
 **Configuración requerida en GitHub** (Settings → Secrets and variables → Actions):
 
 - Secretos: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` y `SUPABASE_DB_URL` (cadena del **pooler** de

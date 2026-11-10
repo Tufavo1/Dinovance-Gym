@@ -1,15 +1,32 @@
 name: CodeQL
 
 # Análisis estático de seguridad del código TypeScript.
+# Solo analiza si cambió código; además corre cada lunes por si aparecen vulnerabilidades nuevas.
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'e2e/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/**'
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'e2e/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/**'
   schedule:
     - cron: '23 5 * * 1'
 
+# actions: read lo necesita CodeQL en repositorios privados para leer los datos de la ejecución.
 permissions:
+  actions: read
   contents: read
   security-events: write
 

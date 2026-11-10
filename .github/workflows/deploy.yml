@@ -3,9 +3,22 @@ name: Deploy a Cloudflare
 # Publica en producción cada vez que main cambia (o a mano desde la pestaña Actions).
 # Antes de publicar vuelve a pasar lint, pruebas y build, aplica las migraciones pendientes de Supabase
 # y recién entonces despliega; si algo falla, no se publica.
+# Solo se despliega si cambió algo que llega a producción (app, base de datos, configuración).
+# Un cambio solo de README u otros documentos no dispara el despliegue. Para forzarlo: Actions → Run workflow.
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'supabase/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'angular.json'
+      - 'ngsw-config.json'
+      - 'wrangler.jsonc'
+      - 'tsconfig*.json'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
@@ -59,6 +72,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Misma versión que package.json; la que trae la acción por defecto (3.x) no entiende esta configuración.
+          wranglerVersion: '4.159.0'
           command: deploy
 
       - name: Prueba rápida del sitio publicado

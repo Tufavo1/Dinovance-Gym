@@ -1,10 +1,42 @@
 name: CI
 
 # Revisa cada cambio antes de unirlo: estilo, pruebas, build y dependencias.
+# Solo corre si cambió código, base de datos, dependencias o configuración.
+# Cambios solo de documentación (README, .md, .gitignore, robots...) no lo disparan.
 on:
   pull_request:
+    paths:
+      - 'src/**'
+      - 'e2e/**'
+      - 'supabase/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'angular.json'
+      - 'ngsw-config.json'
+      - 'wrangler.jsonc'
+      - 'tsconfig*.json'
+      - 'eslint.config.js'
+      - 'vitest.config.mts'
+      - 'playwright.config.ts'
+      - '.github/workflows/**'
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'e2e/**'
+      - 'supabase/**'
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'angular.json'
+      - 'ngsw-config.json'
+      - 'wrangler.jsonc'
+      - 'tsconfig*.json'
+      - 'eslint.config.js'
+      - 'vitest.config.mts'
+      - 'playwright.config.ts'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
