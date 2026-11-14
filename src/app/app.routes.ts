@@ -63,6 +63,30 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/progress/progress.page').then((m) => m.ProgressPage),
   },
   {
+    // Informe semanal y recomendaciones de carga (aceptar o rechazar).
+    path: 'informe',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/report/report.page').then((m) => m.ReportPage),
+  },
+  {
+    // Progresión por ejercicio, comparación entre semanas, mediciones y metas.
+    path: 'evolucion',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/evolution/evolution.page').then((m) => m.EvolutionPage),
+  },
+  {
+    // Vínculo opcional entre los dos perfiles: compartir rutina y comparación.
+    path: 'pareja',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/partner/partner.page').then((m) => m.PartnerPage),
+  },
+  {
+    // Datos personales, máquinas, exportar/importar e historial de modificaciones.
+    path: 'mis-datos',
+    canActivate: [authGuard, onboardedGuard],
+    loadComponent: () => import('./pages/data/data.page').then((m) => m.DataPage),
+  },
+  {
     path: 'mensajes',
     canActivate: [authGuard, onboardedGuard],
     loadComponent: () => import('./pages/messages/messages.page').then((m) => m.MessagesPage),

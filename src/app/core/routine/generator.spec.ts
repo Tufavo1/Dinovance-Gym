@@ -1,6 +1,12 @@
 import { PLACE_PRESETS } from '../equipment';
 import type { AreaMuscle, Exercise, HealthProfile, InjuryRecord } from '../models';
-import { findAlternatives, generateRoutine, type GeneratorInput } from './generator';
+import {
+  findAlternatives,
+  generateRoutine,
+  missingGeneratorData,
+  substitutionMatch,
+  type GeneratorInput,
+} from './generator';
 
 let seq = 0;
 function ex(name: string, o: Partial<Exercise> = {}): Exercise {
@@ -64,6 +70,32 @@ const CATALOG: Exercise[] = [
     force_type: 'pull',
   }),
   ex('Triceps Pushdown', { primary_muscles: ['triceps'], equipment: 'cable', mechanic: 'isolation' }),
+  ex('Thigh Adductor', {
+    primary_muscles: ['adductors'],
+    mechanic: 'isolation',
+    movement_pattern: 'aduccion_cadera',
+    review_status: 'verificado',
+  }),
+  ex('Cable Hip Adduction', {
+    primary_muscles: ['adductors'],
+    mechanic: 'isolation',
+    equipment: 'cable',
+    movement_pattern: 'aduccion_cadera',
+    review_status: 'verificado',
+  }),
+  ex('Side Lying Hip Adduction', {
+    primary_muscles: ['adductors'],
+    mechanic: 'isolation',
+    equipment: 'body only',
+    movement_pattern: 'aduccion_cadera',
+    review_status: 'verificado',
+  }),
+  ex('Thigh Abductor', {
+    primary_muscles: ['abductors'],
+    mechanic: 'isolation',
+    movement_pattern: 'abduccion_cadera',
+    review_status: 'verificado',
+  }),
   ex('Standing Calf Raises', { primary_muscles: ['calves'], mechanic: 'isolation' }),
   ex('Seated Calf Raise', { primary_muscles: ['calves'], mechanic: 'isolation' }),
   ex('Prone Manual Hamstring', { primary_muscles: ['hamstrings'], equipment: null, force_type: 'static' }),
@@ -270,7 +302,7 @@ describe('generateRoutine', () => {
     expect(allIds(run({}, { avoid: [hack] }))).not.toContain(hack);
   });
 
-  it('busca alternativas del mismo músculo, seguras y sin repetir la rutina', () => {
+  it('busca alternativas equivalentes, seguras y sin repetir la rutina', () => {
     const input = (o: Partial<GeneratorInput> = {}): GeneratorInput => ({
       exercises: CATALOG,
       areaMuscles: AREA_MUSCLES,
@@ -285,13 +317,20 @@ describe('generateRoutine', () => {
       ...o,
     });
     const id = (n: string) => CATALOG.find((e) => e.name === n)!.id;
-    const alts = findAlternatives(input(), id('Hack Squat'), [id('Leg Press')]);
+    const alts = findAlternatives(input(), id('Hack Squat'), []);
     const names = alts.map((a) => a.exercise.name);
-    expect(names.length).toBeGreaterThan(0);
+    expect(names).toContain('Leg Press');
     expect(names).not.toContain('Hack Squat');
-    expect(names).not.toContain('Leg Press');
-    for (const a of alts) expect(a.exercise.primary_muscles).toContain('quadriceps');
+    // Un aislado de cuádriceps no reemplaza a un compuesto: trabajar la misma zona no basta.
+    expect(names).not.toContain('Leg Extensions');
+    for (const a of alts) expect(a.exercise.primary_muscles[0]).toBe('quadriceps');
     expect(alts[0].item.sets).toBeGreaterThan(0);
+    expect(alts[0].why).toContain('mismo músculo principal');
+
+    // No repite lo que ya está en la rutina.
+    expect(findAlternatives(input(), id('Hack Squat'), [id('Leg Press')]).map((a) => a.exercise.name)).not.toContain(
+      'Leg Press',
+    );
 
     // Con la rodilla lesionada no hay alternativas de cuádriceps.
     const knee: InjuryRecord[] = [
@@ -302,5 +341,131 @@ describe('generateRoutine', () => {
     // Lo que no le gusta tampoco aparece como alternativa.
     const avoided = findAlternatives(input({ avoid: [id('Leg Press')] }), id('Hack Squat'), []);
     expect(avoided.map((a) => a.exercise.name)).not.toContain('Leg Press');
+  });
+});
+
+describe('aductores y cobertura del tren inferior', () => {
+  const byName = (n: string) => CATALOG.find((e) => e.name === n)!;
+  const primaryKeys = (r: ReturnType<typeof run>) =>
+    new Set(allIds(r).map((id) => CATALOG.find((e) => e.id === id)!.primary_muscles[0]));
+
+  it('incluye trabajo directo de aductores todas las semanas, con cualquier disponibilidad', () => {
+    for (const experience of ['principiante', 'intermedio', 'avanzado']) {
+      for (const days of [2, 3, 4, 5, 6]) {
+        for (const minutes of [30, 45, 60, 90]) {
+          const keys = primaryKeys(run({ days_per_week: days, session_minutes: minutes, experience }));
+          expect(keys, `${experience} / ${days} días / ${minutes} min`).toContain('adductors');
+        }
+      }
+    }
+  });
+
+  it('abductores y pantorrillas entran si caben; si no, la rutina lo avisa', () => {
+    for (const days of [2, 3, 4, 5, 6]) {
+      for (const minutes of [45, 60, 90]) {
+        const r = run({ days_per_week: days, session_minutes: minutes, experience: 'intermedio' });
+        const keys = primaryKeys(r);
+        for (const [key, label] of [
+          ['abductors', 'Abductores'],
+          ['calves', 'Pantorrillas'],
+        ]) {
+          const explained = r.notes.some((n) => n.startsWith(`${label}: no cupo`));
+          expect(keys.has(key) || explained, `${key} / ${days} días / ${minutes} min`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('sin máquinas ni poleas usa la alternativa de aductores que sí se puede hacer', () => {
+    const r = run({}, { gear: ['mancuernas', 'banco'] });
+    const names = allIds(r).map(nameOf);
+    expect(names).toContain('Side Lying Hip Adduction');
+    expect(names).not.toContain('Thigh Adductor');
+  });
+
+  it('si no existe ningún ejercicio de aductores posible, lo dice en vez de callarlo', () => {
+    const catalog = CATALOG.filter((e) => e.primary_muscles[0] !== 'adductors');
+    const r = run({}, { exercises: catalog });
+    expect(r.notes.join(' ')).toMatch(/Aductores: (sin ejercicio directo posible|no hay ejercicio posible)/);
+  });
+
+  it('con lesión activa de cadera no fuerza aductores', () => {
+    const hip: InjuryRecord[] = [
+      { id: 'c', body_area: 'cadera', kind: 'lesion', status: 'activa', year: null, description: null },
+    ];
+    const r = run(
+      {},
+      { injuries: hip, areaMuscles: [...AREA_MUSCLES, { area: 'cadera', muscle: 'adductors', risk: 'alto' }] },
+    );
+    expect(primaryKeys(r)).not.toContain('adductors');
+  });
+
+  it('la máquina de aductores solo se sustituye por otra aducción de cadera', () => {
+    const adductor = byName('Thigh Adductor');
+    expect(substitutionMatch(adductor, byName('Cable Hip Adduction'))?.why).toContain('aducción de cadera');
+    expect(substitutionMatch(adductor, byName('Leg Press'))).toBeNull();
+    expect(substitutionMatch(adductor, byName('Thigh Abductor'))).toBeNull();
+    const alts = findAlternatives(
+      {
+        exercises: CATALOG,
+        areaMuscles: AREA_MUSCLES,
+        manualContra: [],
+        health: health(),
+        injuries: [],
+        place: 'smartfit',
+        gear: PLACE_PRESETS['smartfit'],
+        age: 30,
+        seed: 'x',
+      },
+      adductor.id,
+      [],
+    );
+    expect(alts.map((a) => a.exercise.name).sort()).toEqual(['Cable Hip Adduction', 'Side Lying Hip Adduction']);
+  });
+});
+
+describe('explicación y uso del historial', () => {
+  it('cada ejercicio de fuerza trae su justificación y su RIR; cada día, su objetivo', () => {
+    const r = run();
+    for (const d of r.days) {
+      expect(d.objective).toBeTruthy();
+      for (const e of d.exercises) {
+        const cat = CATALOG.find((x) => x.id === e.exercise_id)!.category;
+        if (cat !== 'strength') continue;
+        expect(e.rationale, nameOf(e.exercise_id)).toMatch(/Trabajo directo de/);
+        if (e.reps_max > 1) expect(e.rir_min).not.toBeNull();
+      }
+    }
+  });
+
+  it('no depende del azar: otra semilla da la misma rutina', () => {
+    expect(allIds(run({}, { seed: 'a' }))).toEqual(allIds(run({}, { seed: 'b' })));
+  });
+
+  it('rota un ejercicio estancado por una variante equivalente', () => {
+    const hack = CATALOG.find((e) => e.name === 'Hack Squat')!.id;
+    const base = allIds(run());
+    expect(base).toContain(hack);
+    const history = { performed: [hack], stalled: [hack], hoursSince: {}, weeklySets: {} };
+    expect(allIds(run({}, { history }))).not.toContain(hack);
+  });
+
+  it('avisa si el primer día repite un grupo entrenado hace menos de 48 h', () => {
+    const history = { performed: [], stalled: [], hoursSince: { quadriceps: 20 }, weeklySets: {} };
+    expect(run({}, { history }).notes.join(' ')).toMatch(/hace menos de 48 h/);
+  });
+
+  it('pide los datos que faltan en vez de suponerlos', () => {
+    const h = health({ days_per_week: null, session_minutes: null });
+    const missing = missingGeneratorData({ health: h, age: null, place: 'casa', gear: [], gearConfirmed: false });
+    expect(missing).toEqual([
+      'cuántos días por semana puedes entrenar',
+      'cuánto dura cada sesión',
+      'tu fecha de nacimiento (edad)',
+      'el equipamiento disponible en ese lugar',
+    ]);
+    expect(missingGeneratorData({ health: health(), age: 30, place: 'casa', gear: [], gearConfirmed: true })).toEqual(
+      [],
+    );
   });
 });

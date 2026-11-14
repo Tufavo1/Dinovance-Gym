@@ -25,8 +25,10 @@ import {
   LEVEL_RANK,
   LOW_IMPACT_CARDIO,
   MAIN_LIFTS,
+  LOWER_DAY_KEYS,
   MINOR_MUSCLES,
   MUSCLE_ES,
+  MUST_COVER_LOWER,
   NOT_FOR_ROUTINE,
   OUTDOOR_CARDIO,
   POSTPARTUM_AVOID,
@@ -39,9 +41,10 @@ import {
   type Slot,
 } from './rules';
 import { FREQUENCY_MUSCLES, bigGroupFrequency } from '../training/benchmarks';
+import { muscleName, patternName, volumeKeyName } from '../anatomy/muscles';
 
 /**
- * Generador de rutinas por REGLAS (sin IA), determinista para un mismo "seed".
+ * Generador de rutinas por REGLAS (sin IA y sin azar): los mismos datos dan siempre la misma rutina.
  *
  * Orden de decisión:
  *  1. Perfil del atleta (historial, salud, hábitos)  -> nivel, volumen y precauciones.
@@ -65,7 +68,24 @@ export interface GeneratorInput {
   avoid?: string[];
   /** Peso corporal (kg), para recomendar la proteína diaria. */
   weightKg?: number | null;
+  /** Ya no se usa: el generador es determinista sin azar. Se conserva por compatibilidad. */
   seed: string;
+  /** Ejercicios de la rutina que se está reemplazando (para variar lo que nunca se entrenó). */
+  previous?: string[];
+  /** Lo que dicen los registros reales de la persona (nunca de otra). Sin historial se omite. */
+  history?: TrainingHistory;
+}
+
+/** Resumen del historial de entrenamiento de UNA persona, para que la rutina lo tenga en cuenta. */
+export interface TrainingHistory {
+  /** Ejercicios que la persona ya registró (sabe hacerlos y tienen progresión en curso). */
+  performed: string[];
+  /** Ejercicios con estancamiento detectado: conviene rotar a una variante equivalente. */
+  stalled: string[];
+  /** Horas desde la última vez que se trabajó cada clave de volumen como músculo principal. */
+  hoursSince: Record<string, number>;
+  /** Series directas por clave de volumen en los últimos 7 días. */
+  weeklySets: Record<string, number>;
 }
 
 export interface GeneratedExercise {
@@ -75,12 +95,21 @@ export interface GeneratedExercise {
   reps_max: number;
   rest_seconds: number;
   notes: string | null;
+  /** RIR objetivo de las series de trabajo. */
+  rir_min?: number | null;
+  rir_max?: number | null;
+  /** Tempo, solo cuando es relevante para el ejercicio. */
+  tempo?: string | null;
+  /** Por qué se eligió este ejercicio (reglas y datos concretos). */
+  rationale?: string | null;
 }
 
 export interface GeneratedDay {
   day_index: number;
   name: string;
   estimated_minutes: number;
+  /** Objetivo de la sesión. */
+  objective?: string;
   exercises: GeneratedExercise[];
 }
 
@@ -96,26 +125,6 @@ export interface GeneratedRoutine {
 const WARMUP_MINUTES = 5;
 const MIN_EXERCISES = 4;
 const GYMS = new Set(['smartfit', 'otro_gimnasio']);
-
-function hash(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const isPullUp = (name: string) => /^(pullups|chin-up)$/i.test(name);
 
@@ -251,20 +260,92 @@ function buildContext(input: GeneratorInput) {
 function itemFor(ex: Exercise, p: AthleteProfile, exerciseNote: Map<string, string>) {
   const r = prescribe(ex, p);
   const extra = exerciseNote.get(ex.id);
-  return {
-    item: { exercise_id: ex.id, ...r, notes: [extra, r.notes].filter(Boolean).join('. ') || null },
-    minutes: estimateMinutes(ex, r, p),
+  const timed = r.reps_min === 1 && r.reps_max === 1;
+  const strength = ex.category !== 'stretching' && ex.category !== 'cardio';
+  const item: GeneratedExercise = {
+    exercise_id: ex.id,
+    ...r,
+    notes: [extra, r.notes].filter(Boolean).join('. ') || null,
+    rir_min: strength && !timed ? p.programme.rir[0] : null,
+    rir_max: strength && !timed ? p.programme.rir[1] : null,
+    tempo: strength && !timed ? tempoFor(ex) : null,
+    rationale: null,
   };
+  return { item, minutes: estimateMinutes(ex, r, p) };
+}
+
+/**
+ * Tempo solo donde aporta: aislados de recorrido largo, aductores y pantorrillas, en los que el
+ * error típico es rebotar o soltar la bajada. En el resto no se prescribe (no cambia el resultado).
+ */
+function tempoFor(ex: Exercise): string | null {
+  const key = ex.primary_muscles[0];
+  if (key === 'calves') return 'pausa 1 s abajo';
+  if (key === 'adductors' || key === 'abductors') return 'bajada 2-3 s';
+  if (ex.mechanic === 'isolation' && LENGTHENED_BIAS.test(ex.name)) return 'bajada 2-3 s';
+  return null;
+}
+
+/** Equipo del ejercicio en palabras, para la justificación. */
+const EQUIPMENT_ES: Record<string, string> = {
+  barbell: 'barra',
+  dumbbell: 'mancuernas',
+  cable: 'polea',
+  machine: 'máquina',
+  kettlebells: 'kettlebell',
+  bands: 'banda elástica',
+  'e-z curl bar': 'barra EZ',
+  'exercise ball': 'pelota',
+  'medicine ball': 'balón medicinal',
+  'body only': 'peso corporal',
+};
+
+/**
+ * Justificación de un ejercicio: solo afirma lo que consta en su ficha (músculos, patrón, equipo,
+ * nivel) y en el perfil o historial de la persona.
+ */
+export function rationaleFor(
+  ex: Exercise,
+  ctx: { slot?: string[]; p: AthleteProfile; history?: TrainingHistory; extra?: string },
+): string {
+  const parts: string[] = [];
+  const main = (ex.muscles ?? []).filter((x) => x.role === 'principal').map((x) => muscleName(x.code));
+  const secondary = (ex.muscles ?? []).filter((x) => x.role === 'secundario').map((x) => muscleName(x.code));
+  const target = ctx.slot?.find((k) => ex.primary_muscles.includes(k)) ?? ex.primary_muscles[0];
+  if (ctx.extra) parts.push(ctx.extra);
+  if (target) parts.push(`Trabajo directo de ${volumeKeyName(target).toLowerCase()}`);
+  if (ex.movement_pattern) parts.push(`patrón: ${patternName(ex.movement_pattern).toLowerCase()}`);
+  let text = parts.join('; ') + '.';
+  if (main.length) text += ` Músculos principales: ${main.join(', ')}.`;
+  if (secondary.length) text += ` Secundarios: ${secondary.slice(0, 4).join(', ')}.`;
+  const why: string[] = [];
+  why.push(
+    ex.mechanic === 'compound' ? 'compuesto' : ex.mechanic === 'isolation' ? 'aislamiento' : 'tipo no informado',
+  );
+  const eq = EQUIPMENT_ES[ex.equipment ?? 'body only'];
+  if (eq) why.push(`con ${eq}, que marcaste como disponible`);
+  if (ctx.p.beginner && (ex.equipment === 'machine' || ex.equipment === 'cable'))
+    why.push('guiado, adecuado a tu nivel');
+  if (LENGTHENED_BIAS.test(ex.name)) why.push('carga el músculo en posición alargada');
+  if (ctx.history?.performed.includes(ex.id)) why.push('ya lo tienes registrado: continúa tu progresión');
+  text += ` Elegido por: ${why.join('; ')}.`;
+  text +=
+    ex.review_status === 'verificado' ? ' Ficha verificada.' : ' Ficha pendiente de revisión (datos del dataset).';
+  return text.slice(0, 600);
 }
 
 export interface Alternative {
   exercise: Exercise;
   item: GeneratedExercise;
+  /** Justificación biomecánica de por qué sirve como reemplazo. */
+  why?: string;
 }
 
 /**
- * Alternativas seguras para reemplazar un ejercicio: trabajan el mismo músculo principal,
- * respetan equipamiento, nivel, lesiones y preferencias, y no repiten ejercicios de la rutina.
+ * Alternativas para reemplazar un ejercicio: mismo motor primario y mismo patrón de movimiento
+ * (ver substitutionMatch), compatibles con el equipamiento, el nivel, las lesiones y las
+ * preferencias de la persona, y sin repetir ejercicios de la rutina. Si no hay ninguna
+ * equivalente, devuelve una lista vacía: no se ofrece "algo parecido".
  */
 export function findAlternatives(
   input: GeneratorInput,
@@ -282,28 +363,109 @@ export function findAlternatives(
       : original.category === 'cardio'
         ? ctx.cardioPool
         : ctx.mainPool;
-  const main = original.primary_muscles[0];
-  const pattern = patternOf(original.name, original.id);
-
-  return list
-    .filter((e) => !skip.has(e.id) && e.primary_muscles.some((m) => original.primary_muscles.includes(m)))
-    .map((e) => {
-      let score = 0;
-      if (STAPLES.has(e.name)) score += 3;
-      if (KNOWN_NAMES.has(e.name)) score += 1;
-      if (e.primary_muscles[0] === main) score += 1.5;
-      if (e.mechanic === original.mechanic) score += 1;
-      // Mismo patrón con otro equipo (ej: press en máquina -> press con mancuernas) es un buen cambio.
-      if (patternOf(e.name, e.id) === pattern && e.equipment !== original.equipment) score += 0.5;
+  const strength = original.category !== 'stretching' && original.category !== 'cardio';
+  const scored = list
+    .filter((e) => !skip.has(e.id))
+    .map((e) => ({ e, match: strength ? substitutionMatch(original, e) : looseMatch(original, e) }))
+    .filter((x): x is { e: Exercise; match: SubstitutionMatch } => x.match !== null)
+    .map(({ e, match }) => {
+      let score = match.score;
+      if (STAPLES.has(e.name)) score += 1.5;
+      if (KNOWN_NAMES.has(e.name)) score += 0.5;
+      if (e.review_status === 'verificado') score += 0.5;
       const bodyOnly = !e.equipment || e.equipment === 'body only';
       if (bodyOnly && !ctx.bodyweightOnly && ctx.gear.size > 2 && !e.primary_muscles.includes('abdominals')) {
-        score -= 2;
+        score -= 1;
       }
-      return { e, score };
+      return { e, score, match };
     })
     .sort((a, b) => b.score - a.score || a.e.name.localeCompare(b.e.name))
-    .slice(0, count)
-    .map(({ e }) => ({ exercise: e, item: itemFor(e, ctx.p, ctx.exerciseNote).item }));
+    .slice(0, count);
+
+  return scored.map(({ e, match }) => {
+    const item = itemFor(e, ctx.p, ctx.exerciseNote).item;
+    item.rationale = rationaleFor(e, {
+      p: ctx.p,
+      extra: `Sustituye a ${original.name_es ?? original.name}: ${match.why}`,
+    });
+    return { exercise: e, item, why: match.why };
+  });
+}
+
+export interface SubstitutionMatch {
+  score: number;
+  /** Justificación biomecánica de la equivalencia. */
+  why: string;
+}
+
+/** Músculos principales detallados de un ejercicio (códigos), o las claves gruesas si no hay ficha. */
+function mainCodes(ex: Exercise): string[] {
+  const codes = (ex.muscles ?? []).filter((m) => m.role === 'principal').map((m) => m.code);
+  return codes.length ? codes : ex.primary_muscles;
+}
+
+/**
+ * ¿Puede `candidate` reemplazar a `original`? Solo si hay una equivalencia biomecánica:
+ * el MISMO motor primario y, además, el mismo patrón de movimiento o (si falta el patrón de alguno)
+ * el mismo tipo de ejercicio (compuesto/aislamiento). Trabajar "la misma zona" no basta: una
+ * prensa no reemplaza a la máquina de aductores aunque ambas sean de pierna.
+ */
+export function substitutionMatch(original: Exercise, candidate: Exercise): SubstitutionMatch | null {
+  const key = original.primary_muscles[0];
+  if (!key || candidate.primary_muscles[0] !== key) return null;
+  const samePattern =
+    !!original.movement_pattern &&
+    !!candidate.movement_pattern &&
+    original.movement_pattern === candidate.movement_pattern;
+  const patternUnknown = !original.movement_pattern || !candidate.movement_pattern;
+  if (!samePattern && !(patternUnknown && original.mechanic === candidate.mechanic)) return null;
+
+  const a = new Set(mainCodes(original));
+  const shared = mainCodes(candidate).filter((c) => a.has(c));
+  const secA = new Set(original.secondary_muscles);
+  const sharedSecondary = candidate.secondary_muscles.filter((k) => secA.has(k)).length;
+
+  let score = samePattern ? 4 : 1.5;
+  score += Math.min(2, shared.length);
+  score += Math.min(1, sharedSecondary * 0.25);
+  if (candidate.mechanic === original.mechanic) score += 1;
+  if (candidate.level === original.level) score += 0.5;
+
+  const reasons = [`mismo músculo principal (${volumeKeyName(key).toLowerCase()})`];
+  reasons.push(
+    samePattern
+      ? `mismo patrón de movimiento (${patternName(original.movement_pattern).toLowerCase()})`
+      : 'patrón pendiente de revisión en alguno de los dos; coincide el tipo de ejercicio',
+  );
+  if (candidate.equipment !== original.equipment) {
+    reasons.push(`con ${EQUIPMENT_ES[candidate.equipment ?? 'body only'] ?? 'otro equipo'}`);
+  }
+  return { score, why: reasons.join(', ') + '.' };
+}
+
+/** Estiramientos y cardio: basta con que trabajen el mismo músculo o sean el mismo tipo de cardio. */
+function looseMatch(original: Exercise, candidate: Exercise): SubstitutionMatch | null {
+  if (original.category === 'cardio') return { score: 1, why: 'otra opción de cardio disponible en tu lugar.' };
+  return candidate.primary_muscles.some((m) => original.primary_muscles.includes(m))
+    ? { score: 1, why: 'estira el mismo grupo muscular.' }
+    : null;
+}
+
+/** Datos que faltan para generar una rutina segura. Si la lista no está vacía, se piden: no se adivinan. */
+export function missingGeneratorData(
+  input: Pick<GeneratorInput, 'health' | 'age' | 'place' | 'gear'> & { gearConfirmed: boolean },
+): string[] {
+  const h = input.health;
+  const missing: string[] = [];
+  if (!h.experience) missing.push('tu experiencia entrenando');
+  if (!h.goal) missing.push('tu objetivo principal');
+  if (!h.days_per_week) missing.push('cuántos días por semana puedes entrenar');
+  if (!h.session_minutes) missing.push('cuánto dura cada sesión');
+  if (!h.last_trained) missing.push('cuándo entrenaste por última vez');
+  if (input.age === null) missing.push('tu fecha de nacimiento (edad)');
+  if (!input.place) missing.push('el lugar donde entrenas');
+  if (!input.gearConfirmed) missing.push('el equipamiento disponible en ese lugar');
+  return missing;
 }
 
 /** Ids de ejercicios que sirven a esta persona (equipo, nivel, salud y preferencias). */
@@ -360,7 +522,6 @@ export function exercisesForMuscle(input: GeneratorInput, muscle: string): Muscl
 
 export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
   const notes = new Set<string>();
-  const rng = mulberry32(hash(input.seed));
   const {
     p,
     goals,
@@ -393,6 +554,10 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
   const focusSlots = [...focusAreas].map((a) => FOCUS_SLOTS[a]).filter((s): s is string[] => !!s);
 
   const used = new Set<string>();
+  const performed = new Set(input.history?.performed ?? []);
+  const stalled = new Set(input.history?.stalled ?? []);
+  const previous = new Set(input.previous ?? []);
+  const exById = new Map(input.exercises.map((e) => [e.id, e]));
   const trainedMuscles = new Set<string>();
   /** Músculos para los que no existe ningún ejercicio posible (no por falta de tiempo). */
   const unavailable = new Set<string>();
@@ -410,12 +575,23 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
     let bestScore = -Infinity;
     for (const ex of mainPool) {
       if (dayUsed.has(ex.id)) continue;
-      if (!ex.primary_muscles.some((m) => slot.includes(m))) continue;
+      // Cada lugar de la plantilla lo ocupa un ejercicio cuyo MOTOR PRIMARIO es ese músculo: una prensa
+      // (cuádriceps y glúteo) no cuenta como el ejercicio de isquiotibiales o glúteos del día.
+      if (!slot.includes(ex.primary_muscles[0])) continue;
       if (ex.category === 'plyometrics' && !allowPlyo) continue;
       if (dayPatterns.has(patternOf(ex.name, ex.id))) continue;
-      let score = rng() * 0.9;
+      // Sin azar: la elección la deciden las reglas y, a igualdad de puntaje, el orden alfabético.
+      let score = 0;
       if (!used.has(ex.id)) score += 1.5;
+      // Al regenerar, lo que nunca se llegó a entrenar de la rutina anterior cede su lugar a una
+      // alternativa equivalente (variedad); lo que ya tiene registros se conserva (progresión).
+      if (previous.has(ex.id) && !performed.has(ex.id)) score -= 0.4;
       if (STAPLES.has(ex.name)) score += 4;
+      // Ficha revisada a mano: se sabe con certeza qué trabaja.
+      if (ex.review_status === 'verificado') score += 0.7;
+      // Historial propio: se conserva lo que ya progresa y se rota lo que está estancado.
+      if (performed.has(ex.id)) score += 0.6;
+      if (stalled.has(ex.id)) score -= 3;
       if (KNOWN_NAMES.has(ex.name)) score += 0.5;
       // Tensión en posición alargada (Maeo, Wolf, Nippard): mejor estímulo por serie.
       if (LENGTHENED_BIAS.test(ex.name)) score += 0.8;
@@ -435,7 +611,7 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
       if (ex.category && preferredCats.has(ex.category)) score += 1.5;
       // Intermedios y avanzados: aprovechar ejercicios de su nivel.
       if (p.maxRank > 0 && (LEVEL_RANK[ex.level ?? ''] ?? 0) === p.maxRank) score += 0.8;
-      if (score > bestScore) {
+      if (score > bestScore || (score === bestScore && best !== null && ex.name < best.name)) {
         best = ex;
         bestScore = score;
       }
@@ -448,10 +624,10 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
     let bestScore = -Infinity;
     for (const ex of list) {
       if (dayUsed.has(ex.id)) continue;
-      let score = rng();
+      let score = 0;
       if (!used.has(ex.id)) score += 1;
       if (ex.primary_muscles.some((m) => muscles.has(m))) score += 2;
-      if (score > bestScore) {
+      if (score > bestScore || (score === bestScore && best !== null && ex.name < best.name)) {
         best = ex;
         bestScore = score;
       }
@@ -495,6 +671,7 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
       }
       const { item, minutes: m } = toItem(ex);
       if (items.length >= MIN_EXERCISES && spent + m > budget) break;
+      item.rationale = rationaleFor(ex, { slot, p, history: input.history });
       if (ex.category === 'plyometrics') plyo++;
       if (ex.mechanic === 'compound' && !ex.primary_muscles.includes('abdominals')) compounds++;
       dayUsed.add(ex.id);
@@ -550,6 +727,130 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
   if (thin && !isFullBody) {
     week = buildWeek(Array.from({ length: p.daysPerWeek }, (_, i) => (i % 2 === 0 ? 'FULL_A' : 'FULL_B')));
     notes.add('Por tu lesión: cuerpo completo, con ejercicios seguros.');
+  }
+
+  // ---- Aductores, abductores y pantorrillas: al menos un ejercicio directo por semana ----
+  // Si el tiempo los dejó fuera, entran en un día de tren inferior: se agregan si caben y, si no,
+  // reemplazan al último ejercicio de un músculo que ese día ya tiene otro ejercicio (redundante).
+  const coverageNotes: string[] = [];
+  const lowerDays = [...new Set(week.split)].filter((k) => LOWER_DAY_KEYS.has(k)).map((k) => week.built.get(k)!);
+  const weekHasLower = lowerDays.some((d) =>
+    d.items.some((it) =>
+      ['quadriceps', 'hamstrings', 'glutes'].includes(exById.get(it.exercise_id)?.primary_muscles[0] ?? ''),
+    ),
+  );
+  if (weekHasLower && !stretchOnly) {
+    for (const key of MUST_COVER_LOWER) {
+      if (trainedMuscles.has(key)) continue;
+      const candidates = mainPool
+        .filter((e) => e.primary_muscles[0] === key && e.category !== 'plyometrics')
+        .map((e) => ({
+          e,
+          score:
+            (STAPLES.has(e.name) ? 4 : 0) +
+            (e.review_status === 'verificado' ? 1 : 0) +
+            (performed.has(e.id) ? 0.6 : 0) -
+            (stalled.has(e.id) ? 3 : 0) +
+            (p.beginner && (e.equipment === 'machine' || e.equipment === 'cable') ? 0.6 : 0),
+        }))
+        .sort((a, b) => b.score - a.score || a.e.name.localeCompare(b.e.name));
+      const chosen = candidates[0]?.e;
+      if (!chosen) {
+        const indirect = [...new Set(week.split)]
+          .flatMap((k) => week.built.get(k)!.items)
+          .map((it) => exById.get(it.exercise_id))
+          .filter((e): e is Exercise => !!e && e.secondary_muscles.includes(key));
+        coverageNotes.push(
+          indirect.length > 0
+            ? `${volumeKeyName(key)}: sin ejercicio directo posible con tu equipo; trabajo indirecto en ${indirect.length} ejercicio(s).`
+            : `${volumeKeyName(key)}: no hay ejercicio posible con tu equipo y limitaciones.`,
+        );
+        continue;
+      }
+      const { item, minutes: full } = toItem(chosen);
+      item.rationale = rationaleFor(chosen, {
+        slot: [key],
+        p,
+        history: input.history,
+        extra: `Regla de cobertura: ${volumeKeyName(key).toLowerCase()} con al menos un ejercicio directo por semana`,
+      });
+      // Día de tren inferior con menos ejercicios accesorios ya insertados y menos carga de trabajo.
+      const covered = (d: (typeof lowerDays)[number]) =>
+        d.items.filter((it) => MUST_COVER_LOWER.includes(exById.get(it.exercise_id)?.primary_muscles[0] ?? '')).length;
+      const day = [...lowerDays].sort((a, b) => covered(a) - covered(b) || a.raw - b.raw)[0];
+      const room = day.main < p.programme.maxExercises;
+      let m = full;
+      let fits = room && day.raw + m <= p.minutes + 3;
+      // Si no cabe con todas sus series, entra con 2 (dosis mínima) antes que quedar fuera.
+      // Aductores (prioridad de la persona) puede alargar la sesión hasta 8 minutos antes que
+      // desplazar a un ejercicio principal; los demás grupos, no.
+      const slack = key === 'adductors' ? 8 : 3;
+      if (!fits && room && item.sets > 2) {
+        const short = estimateMinutes(chosen, { ...item, sets: 2 }, p);
+        if (day.raw + short <= p.minutes + slack) {
+          item.sets = 2;
+          m = short;
+          fits = true;
+          const over = Math.round(day.raw + short - p.minutes);
+          coverageNotes.push(
+            over > 3
+              ? `${volumeKeyName(key)}: 2 series; la sesión se alarga unos ${over} min para no quitar un ejercicio principal.`
+              : `${volumeKeyName(key)}: 2 series para que quepa en tu tiempo.`,
+          );
+        }
+      }
+      if (fits) {
+        day.items.splice(day.main, 0, item);
+        day.main += 1;
+        day.raw += m;
+      } else {
+        const mainItems = day.items.slice(0, day.main);
+        const keyOf = (i: number) => exById.get(mainItems[i].exercise_id)?.primary_muscles[0] ?? '';
+        const count = new Map<string, number>();
+        for (let i = 0; i < mainItems.length; i++) count.set(keyOf(i), (count.get(keyOf(i)) ?? 0) + 1);
+        // Solo se reemplaza un ejercicio REDUNDANTE: su músculo ya tiene otro ejercicio ese mismo día.
+        // Nunca los dos básicos del inicio ni otro ejercicio de cobertura.
+        let idx = -1;
+        for (let i = mainItems.length - 1; i >= 2; i--) {
+          if (!MUST_COVER_LOWER.includes(keyOf(i)) && (count.get(keyOf(i)) ?? 0) > 1) {
+            idx = i;
+            break;
+          }
+        }
+        // Aductores (prioridad de la persona): si no hay redundantes, cede su lugar el último ejercicio
+        // cuyo músculo también se entrena otro día de la semana. Los demás grupos no desplazan a nadie.
+        if (idx < 0 && key === 'adductors') {
+          const elsewhere = (k: string) =>
+            [...new Set(week.split)].some(
+              (dk) =>
+                week.built.get(dk) !== day &&
+                week.built.get(dk)!.items.some((it) => exById.get(it.exercise_id)?.primary_muscles[0] === k),
+            );
+          for (let i = mainItems.length - 1; i >= 2; i--) {
+            if (!MUST_COVER_LOWER.includes(keyOf(i)) && elsewhere(keyOf(i))) {
+              idx = i;
+              break;
+            }
+          }
+          for (let i = mainItems.length - 1; idx < 0 && i >= 2; i--) if (!MUST_COVER_LOWER.includes(keyOf(i))) idx = i;
+        }
+        if (idx < 0) {
+          coverageNotes.push(
+            `${volumeKeyName(key)}: no cupo en la sesión sin quitar un ejercicio principal; con más tiempo por sesión se incluye.`,
+          );
+          continue;
+        }
+        const outItem = day.items[idx];
+        const out = exById.get(outItem.exercise_id);
+        if (out) day.raw += m - estimateMinutes(out, outItem, p);
+        day.items[idx] = item;
+        coverageNotes.push(
+          `${volumeKeyName(key)}: entra en lugar de ${out ? (out.name_es ?? out.name) : 'otro ejercicio'} para no dejar el grupo sin trabajo directo.`,
+        );
+      }
+      trainedMuscles.add(key);
+      used.add(chosen.id);
+    }
   }
 
   // ---- Ajuste de volumen semanal por músculo (Schoenfeld 2017; Israetel MEV a MRV) ----
@@ -627,15 +928,62 @@ export function generateRoutine(input: GeneratorInput): GeneratedRoutine {
   }
   if (shortOf.length > 0) notes.add(`Con tus ${p.daysPerWeek} días quedó: ${shortOf.join(', ')}.`);
 
+  /** Claves de volumen con trabajo directo en un día. */
+  const directKeysOf = (key: string): string[] => [
+    ...new Set(
+      week.built
+        .get(key)!
+        .items.filter((it) => !isTimed(it))
+        .map((it) => exMap.get(it.exercise_id)?.primary_muscles[0])
+        .filter((k): k is string => !!k),
+    ),
+  ];
+
   const days: GeneratedDay[] = week.split.map((key, d) => {
     const day = week.built.get(key)!;
+    const keys = directKeysOf(key);
     return {
       day_index: d + 1,
       name: `Día ${d + 1} · ${day.name}`,
       estimated_minutes: day.minutes,
+      objective: keys.length
+        ? `${labelOf(GOAL_OPTIONS, p.goal)}: trabajo directo de ${keys.map((k) => volumeKeyName(k).toLowerCase()).join(', ')}.`
+        : `${labelOf(GOAL_OPTIONS, p.goal)}.`,
       exercises: day.items.map((e) => ({ ...e })),
     };
   });
+
+  // ---- Recuperación entre sesiones consecutivas ----
+  const allFullBody = week.split.every((k) => k.startsWith('FULL'));
+  if (allFullBody && week.split.length > 1) {
+    notes.add(
+      'Cuerpo completo: cada sesión repite grupos musculares, deja al menos un día de descanso entre sesiones.',
+    );
+  }
+  for (let d = 0; !allFullBody && d + 1 < week.split.length; d++) {
+    const a = new Set(directKeysOf(week.split[d]));
+    const shared = directKeysOf(week.split[d + 1]).filter((k) => a.has(k) && k !== 'abdominals');
+    if (shared.length > 0) {
+      notes.add(
+        `Día ${d + 1} y Día ${d + 2} comparten ${shared.map((k) => volumeKeyName(k).toLowerCase()).join(', ')}: deja al menos un día de descanso entre ellos.`,
+      );
+    }
+  }
+  // Con historial: avisa si el primer día repite un grupo entrenado hace menos de 48 h.
+  if (input.history && days.length > 0) {
+    const recent = directKeysOf(week.split[0]).filter((k) => (input.history!.hoursSince[k] ?? Infinity) < 48);
+    if (recent.length > 0) {
+      const alt = week.split.findIndex((k) =>
+        directKeysOf(k).every((m) => (input.history!.hoursSince[m] ?? Infinity) >= 48),
+      );
+      notes.add(
+        `Según tus registros entrenaste ${recent.map((k) => volumeKeyName(k).toLowerCase()).join(', ')} hace menos de 48 h: ${
+          alt > 0 ? `empieza por el Día ${alt + 1}` : 'espera un día antes de empezar'
+        }.`,
+      );
+    }
+  }
+  for (const n of coverageNotes) notes.add(n);
 
   // ---- Avisos para la persona (lo más importante primero) ----
   const labelArea = (a: string) => labelOf(BODY_AREA_OPTIONS, a).toLowerCase();

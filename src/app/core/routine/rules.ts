@@ -58,6 +58,10 @@ export const STAPLES = new Set([
   'Butt Lift (Bridge)',
   'Thigh Abductor',
   'Thigh Adductor',
+  'Cable Hip Adduction',
+  'Cable Hip Abduction',
+  'Side Lying Hip Adduction',
+  'Side Lying Hip Abduction',
   'Barbell Bench Press - Medium Grip',
   'Dumbbell Bench Press',
   'Barbell Incline Bench Press - Medium Grip',
@@ -250,7 +254,11 @@ export function patternOf(name: string, fallback: string): string {
   return fallback;
 }
 
-/** Plantillas de día: músculos en orden de prioridad (lo primero nunca se recorta). */
+/**
+ * Plantillas de día: músculos en orden de prioridad (lo primero nunca se recorta).
+ * Aductores, abductores y pantorrillas tienen su propio lugar en los días de tren inferior y de
+ * cuerpo completo: no dependen de que "sobre tiempo" al final de la sesión.
+ */
 export type Slot = string[];
 export const TEMPLATES: Record<string, { name: string; force?: 'push' | 'pull'; slots: Slot[] }> = {
   FULL_A: {
@@ -258,9 +266,10 @@ export const TEMPLATES: Record<string, { name: string; force?: 'push' | 'pull'; 
     slots: [
       ['quadriceps'],
       ['chest'],
-      ['lats'],
+      ['lats', 'middle back'],
       ['hamstrings', 'glutes'],
       ['shoulders'],
+      ['adductors'],
       ['abdominals'],
       ['biceps'],
       ['triceps'],
@@ -275,6 +284,7 @@ export const TEMPLATES: Record<string, { name: string; force?: 'push' | 'pull'; 
       ['middle back', 'lats'],
       ['quadriceps'],
       ['chest'],
+      ['abductors'],
       ['abdominals'],
       ['triceps'],
       ['biceps'],
@@ -317,12 +327,12 @@ export const TEMPLATES: Record<string, { name: string; force?: 'push' | 'pull'; 
       ['quadriceps'],
       ['hamstrings'],
       ['glutes'],
-      ['quadriceps'],
+      ['adductors'],
       ['calves'],
-      ['abductors', 'adductors'],
+      ['quadriceps'],
+      ['abductors'],
       ['abdominals'],
       ['hamstrings'],
-      ['glutes'],
     ],
   },
   UPPER: {
@@ -345,12 +355,12 @@ export const TEMPLATES: Record<string, { name: string; force?: 'push' | 'pull'; 
       ['quadriceps'],
       ['hamstrings'],
       ['glutes'],
+      ['adductors'],
       ['calves'],
-      ['quadriceps'],
+      ['abductors'],
       ['abdominals'],
-      ['abductors', 'adductors'],
+      ['quadriceps'],
       ['hamstrings'],
-      ['glutes'],
     ],
   },
 };
@@ -425,4 +435,10 @@ export const MAIN_LIFTS = new Set([
 ]);
 
 /** Músculos secundarios: si no hay ejercicio para ellos no se avisa como "faltante". */
-export const MINOR_MUSCLES = new Set(['forearms', 'traps', 'abductors', 'adductors', 'calves']);
+export const MINOR_MUSCLES = new Set(['forearms', 'traps']);
+
+/** Músculos accesorios del tren inferior que deben tener al menos un ejercicio directo por semana. */
+export const MUST_COVER_LOWER = ['adductors', 'abductors', 'calves'];
+
+/** Días que entrenan el tren inferior (donde se puede insertar trabajo directo de aductores, etc.). */
+export const LOWER_DAY_KEYS = new Set(['LEGS', 'LOWER', 'FULL_A', 'FULL_B']);

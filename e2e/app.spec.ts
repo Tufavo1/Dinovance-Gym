@@ -21,7 +21,7 @@ test('el registro exige una contraseña con letras y números', async ({ page })
 });
 
 test('las rutas privadas están protegidas', async ({ page }) => {
-  for (const path of ['/rutina', '/rutinas', '/perfil', '/home']) {
+  for (const path of ['/rutina', '/rutinas', '/perfil', '/home', '/informe', '/evolucion', '/pareja', '/mis-datos']) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login$/);
   }

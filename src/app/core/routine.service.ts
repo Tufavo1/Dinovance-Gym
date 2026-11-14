@@ -6,15 +6,20 @@ import { ExerciseService } from './exercise.service';
 import { localStore } from './local-store';
 import type { Exercise } from './models';
 import { ProfileService } from './profile.service';
+import { ProgressionService } from './progression.service';
+import { DEFAULT_LOAD_SETTINGS } from './progression/load-units';
+import { recommendProgression } from './progression/progression';
 import {
   allowedExerciseIds,
   findAlternatives,
   generateRoutine,
+  missingGeneratorData,
   prescriptionFor,
   type Alternative,
   type GeneratedExercise,
   type GeneratedRoutine,
   type GeneratorInput,
+  type TrainingHistory,
 } from './routine/generator';
 import { SupabaseService } from './supabase.service';
 
@@ -27,6 +32,11 @@ export interface StoredExercise {
   reps_max: number;
   rest_seconds: number;
   notes: string | null;
+  rir_min?: number | null;
+  rir_max?: number | null;
+  tempo?: string | null;
+  /** Por qué se eligió este ejercicio. */
+  rationale?: string | null;
 }
 
 export interface StoredDay {
@@ -34,6 +44,8 @@ export interface StoredDay {
   day_index: number;
   name: string;
   estimated_minutes: number | null;
+  /** Objetivo de la sesión. */
+  objective?: string | null;
   routine_exercises: StoredExercise[];
 }
 
@@ -46,6 +58,8 @@ export interface StoredRoutine {
   is_active: boolean;
   days_per_week: number | null;
   created_at: string;
+  /** Nombre de quien compartió esta rutina (si llegó desde la pareja). */
+  shared_by_name?: string | null;
   routine_days: StoredDay[];
 }
 
@@ -60,6 +74,13 @@ export class EmptyExerciseCatalogError extends Error {
   }
 }
 
+/** Faltan datos para generar una rutina segura: se piden, no se suponen. */
+export class MissingRoutineDataError extends Error {
+  constructor(readonly missing: string[]) {
+    super(`Faltan datos para generar una rutina segura: ${missing.join('; ')}.`);
+  }
+}
+
 /** Copia local de la rutina activa para poder verla sin internet (PWA). */
 interface RoutineSnapshot {
   routine: StoredRoutine;
@@ -67,9 +88,9 @@ interface RoutineSnapshot {
 }
 
 const SELECT_FULL =
-  'id,name,goal,place,notes,is_active,days_per_week,created_at,' +
-  'routine_days(id,day_index,name,estimated_minutes,' +
-  'routine_exercises(id,exercise_id,position,sets,reps_min,reps_max,rest_seconds,notes))';
+  'id,name,goal,place,notes,is_active,days_per_week,created_at,shared_by_name,' +
+  'routine_days(id,day_index,name,estimated_minutes,objective,' +
+  'routine_exercises(id,exercise_id,position,sets,reps_min,reps_max,rest_seconds,notes,rir_min,rir_max,tempo,rationale))';
 
 /**
  * Rutinas del usuario. Todas las consultas pasan por RLS: cada persona solo ve, activa o
@@ -81,6 +102,7 @@ export class RoutineService {
   private readonly auth = inject(AuthService);
   private readonly profiles = inject(ProfileService);
   private readonly catalog = inject(ExerciseService);
+  private readonly progression = inject(ProgressionService);
 
   /**
    * Rutina activa. Sin conexión devuelve la última copia guardada en el teléfono
@@ -138,6 +160,17 @@ export class RoutineService {
   /** Genera una rutina nueva para el lugar indicado y la deja como rutina activa. */
   async generateAndSave(place: string): Promise<void> {
     const input = await this.generatorInput(place);
+    const missing = missingGeneratorData({
+      ...input,
+      gearConfirmed:
+        this.profiles.health()?.place_equipment?.[place] !== undefined || (PLACE_PRESETS[place]?.length ?? 0) > 0,
+    });
+    if (missing.length > 0) throw new MissingRoutineDataError(missing);
+
+    // La rutina tiene en cuenta el historial real de ESTA persona y lo que ya trae su rutina actual.
+    input.history = await this.trainingHistory().catch(() => undefined);
+    const active = await this.loadActive().catch(() => null);
+    input.previous = active?.routine?.routine_days.flatMap((d) => d.routine_exercises.map((e) => e.exercise_id)) ?? [];
     const generated = generateRoutine(input);
 
     if (generated.days.every((d) => d.exercises.length === 0)) {
@@ -200,6 +233,66 @@ export class RoutineService {
       allowed: allowedExerciseIds(input),
       prescribe: (ex: Exercise) => prescriptionFor(input, ex),
     };
+  }
+
+  /**
+   * Resumen del historial de la persona con sesión (últimos 60 días): qué ejercicios registró,
+   * cuáles están estancados, hace cuántas horas trabajó cada grupo y cuántas series lleva esta
+   * semana. Devuelve undefined si aún no hay registros: el generador no supone ninguno.
+   */
+  async trainingHistory(): Promise<TrainingHistory | undefined> {
+    await this.catalog.ensureLoaded();
+    const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    const { data, error } = await this.sb
+      .from('set_history')
+      .select('exercise_id,reps,started_at')
+      .gte('started_at', since)
+      .not('reps', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(1000);
+    if (error) throw error;
+    const rows = (data ?? []) as { exercise_id: string; reps: number; started_at: string }[];
+    if (rows.length === 0) return undefined;
+
+    const byId = this.catalog.byId();
+    const now = Date.now();
+    const hoursSince: Record<string, number> = {};
+    const weeklySets: Record<string, number> = {};
+    const performed = new Set<string>();
+    for (const r of rows) {
+      const ex = byId.get(r.exercise_id);
+      if (!ex || ex.category === 'stretching' || ex.category === 'cardio') continue;
+      performed.add(r.exercise_id);
+      const hours = (now - new Date(r.started_at).getTime()) / 3_600_000;
+      for (const key of new Set(ex.primary_muscles)) {
+        hoursSince[key] = Math.min(hoursSince[key] ?? Infinity, Math.round(hours));
+        if (hours <= 168) weeklySets[key] = (weeklySets[key] ?? 0) + 1;
+      }
+    }
+
+    const ids = [...performed];
+    const [sessions, settings] = await Promise.all([this.progression.sessions(ids), this.progression.loadSettings()]);
+    const rir = [2, 3];
+    const stalled = ids.filter((id) => {
+      const ex = byId.get(id)!;
+      const list = sessions.get(id) ?? [];
+      if (list.length < 3) return false;
+      const lastSets = list[list.length - 1].sets.length;
+      const advice = recommendProgression({
+        target: {
+          sets: Math.max(1, lastSets),
+          repsMin: ex.rep_range_min ?? 8,
+          repsMax: ex.rep_range_max ?? 12,
+          rirMin: rir[0],
+          rirMax: rir[1],
+        },
+        settings: settings.get(id) ?? DEFAULT_LOAD_SETTINGS,
+        isolation: ex.mechanic === 'isolation',
+        sessions: list,
+      });
+      return advice.flags.includes('estancamiento');
+    });
+    return { performed: ids, stalled, hoursSince, weeklySets };
   }
 
   private avoidCache: string[] | null = null;

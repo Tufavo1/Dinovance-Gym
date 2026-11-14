@@ -26,6 +26,7 @@ import { logOutOutline } from 'ionicons/icons';
 import { AuthService } from '../core/auth.service';
 import { GOAL_OPTIONS, PLACE_OPTIONS, STYLE_OPTIONS, labelOf } from '../core/models';
 import { ProfileService } from '../core/profile.service';
+import { ReportService } from '../core/report.service';
 import { RoutineService, type StoredRoutine } from '../core/routine.service';
 import { WorkoutService, type WorkoutProgress } from '../core/workout.service';
 import { HeaderActionsComponent } from '../shared/header-actions.component';
@@ -66,6 +67,7 @@ export class HomePage implements ViewWillEnter {
   private readonly router = inject(Router);
   private readonly alerts = inject(AlertController);
   private readonly messages = inject(MessageService);
+  private readonly reports = inject(ReportService);
 
   readonly loading = signal(true);
   private readonly routine = signal<StoredRoutine | null>(null);
@@ -147,6 +149,9 @@ export class HomePage implements ViewWillEnter {
       const { routine, offline } = await this.routines.loadActive();
       this.routine.set(routine);
       this.progress.set(routine && !offline ? await this.workouts.progress(routine) : null);
+      // Análisis semanal automático: cierra en segundo plano los informes de las semanas ya
+      // terminadas que falten (no hay tarea programada en el servidor).
+      if (!offline) void this.reports.ensureReports().catch(() => undefined);
     } catch {
       // Sin conexión y sin copia local: Inicio sigue funcionando con el resumen del plan.
     } finally {

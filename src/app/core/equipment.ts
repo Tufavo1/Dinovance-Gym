@@ -192,5 +192,8 @@ export function requiredGear(ex: Exercise): string[] | null {
 
   if (ex.category === 'olympic weightlifting') need.add('plataforma');
 
+  // Equipo adicional declarado en la ficha curada (por ejemplo, un banco para la plancha Copenhague).
+  for (const g of ex.required_gear ?? []) need.add(g);
+
   return [...need];
 }

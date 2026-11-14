@@ -58,6 +58,7 @@ import { exerciseName } from '../../core/routine/exercise-names';
 import { techniqueCues } from '../../core/training/technique';
 import {
   EmptyExerciseCatalogError,
+  MissingRoutineDataError,
   RoutineService,
   type StoredExercise,
   type StoredRoutine,
@@ -152,6 +153,11 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
           }
 
           <h1 class="title">{{ r.name }}</h1>
+          @if (r.shared_by_name) {
+            <p class="hint">
+              Compartida por {{ r.shared_by_name }}. Las cargas son tuyas: salen solo de tus registros.
+            </p>
+          }
           <p class="hint">
             {{ placeLabel(r.place) }} · creada el {{ date(r.created_at) }}
             @if (!r.is_active) {
@@ -186,6 +192,9 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
                 {{ day.estimated_minutes ? '≈ ' + day.estimated_minutes + ' min · ' : ''
                 }}{{ day.routine_exercises.length }} ejercicios
               </p>
+              @if (day.objective) {
+                <p class="hint"><strong>Objetivo de la sesión:</strong> {{ day.objective }}</p>
+              }
             </div>
 
             @if (editing()) {
@@ -278,6 +287,10 @@ import { TabBarComponent } from '../../shared/tab-bar.component';
                       <p class="rx">{{ prescription(e) }}</p>
                       @if (extraNote(e); as note) {
                         <p>{{ note }}</p>
+                      }
+                      @if (isOpen(e.id) && e.rationale) {
+                        <p class="tech">Por qué está en tu rutina</p>
+                        <p>{{ e.rationale }}</p>
                       }
                       @if (isOpen(e.id) && ex) {
                         <app-exercise-facts [exercise]="ex"></app-exercise-facts>
@@ -652,7 +665,10 @@ export class RoutinePage implements OnInit, ViewWillEnter {
       return e.sets > 1 ? `${e.sets} series · ${timed}${rest}` : timed;
     }
     const reps = e.reps_min === e.reps_max ? `${e.reps_min}` : `${e.reps_min} a ${e.reps_max}`;
-    return `${e.sets} series de ${reps} repeticiones${rest}`;
+    const rir =
+      typeof e.rir_min === 'number' && typeof e.rir_max === 'number' ? ` · RIR ${e.rir_min}-${e.rir_max}` : '';
+    const tempo = e.tempo ? ` · ${e.tempo}` : '';
+    return `${e.sets} series de ${reps} repeticiones${rest}${rir}${tempo}`;
   }
 
   /** Nota adicional (por ejemplo "En la máquina asistida…") cuando no se usó como indicación principal. */
@@ -925,7 +941,9 @@ export class RoutinePage implements OnInit, ViewWillEnter {
       const msg =
         e instanceof EmptyExerciseCatalogError
           ? 'La base de ejercicios está vacía. Falta ejecutar la importación en Supabase.'
-          : 'No se pudo generar la rutina. Inténtalo de nuevo.';
+          : e instanceof MissingRoutineDataError
+            ? `${e.message} Complétalos en tu perfil y vuelve a intentarlo.`
+            : 'No se pudo generar la rutina. Inténtalo de nuevo.';
       await this.toast(msg);
     } finally {
       this.generating.set(false);

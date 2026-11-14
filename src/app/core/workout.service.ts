@@ -4,6 +4,7 @@ import { AuthService } from './auth.service';
 import { localStore } from './local-store';
 import type { StoredRoutine } from './routine.service';
 import { SupabaseService } from './supabase.service';
+import type { LoadKind, LoadUnit } from './progression/load-units';
 import type { LoadHistoryEntry } from './training/load-advisor';
 
 export interface WorkoutProgress {
@@ -28,6 +29,14 @@ export interface SessionSetPayload {
   duration_s?: number | null;
   /** Segundos de descanso real antes de esta serie. */
   rest_s?: number | null;
+  /** Carga tal como la registró la persona, en su unidad (kg, lb, nivel, placas u otra). */
+  load_value?: number | null;
+  load_unit?: LoadUnit;
+  unit_label?: string | null;
+  load_kind?: LoadKind;
+  /** Peso corporal del día, solo en ejercicios con peso corporal o lastre. */
+  bodyweight_kg?: number | null;
+  note?: string | null;
 }
 
 /** Entrenamiento completo que se guarda de una vez al terminar (función log_workout). */
@@ -54,6 +63,15 @@ export interface SessionPayload {
   exercises_done?: number;
   /** Ejercicios que pasó sin hacer ninguna serie. */
   skipped_exercises?: string[];
+  /** Identificador generado en el teléfono: reenviar el mismo entrenamiento no lo duplica. */
+  client_id?: string;
+  /** Recuperación declarada antes de entrenar (1 = muy mal, 5 = muy bien). */
+  readiness?: number | null;
+  /** Fatiga percibida al terminar (1 = nada, 5 = agotamiento). */
+  fatigue?: number | null;
+  /** Zonas con molestia o dolor durante la sesión (códigos de body_areas). */
+  discomfort_areas?: string[];
+  discomfort_note?: string | null;
   sets: SessionSetPayload[];
 }
 

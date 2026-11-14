@@ -82,3 +82,6 @@ Thumbs.db
 
 # Archivos temporales de wrangler
 .wrangler/
+
+# Copias de seguridad de la base (datos personales)
+backups/

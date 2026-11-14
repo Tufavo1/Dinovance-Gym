@@ -377,6 +377,30 @@ export interface Exercise {
   secondary_muscles: string[];
   instructions: string[];
   images: string[];
+  /** Ejecución en español (solo en ejercicios con ficha propia). */
+  instructions_es?: string[] | null;
+  /** Patrón de movimiento (código de MOVEMENT_PATTERNS). Null = pendiente de revisión. */
+  movement_pattern?: string | null;
+  /** 'verificado' = ficha curada; 'pendiente_revision' = solo datos del dataset o deducidos. */
+  review_status?: 'verificado' | 'pendiente_revision' | null;
+  muscle_function?: string | null;
+  common_errors?: string[] | null;
+  variants?: string[] | null;
+  precautions?: string[] | null;
+  safety_notes?: string[] | null;
+  rep_range_min?: number | null;
+  rep_range_max?: number | null;
+  /** Equipo exigido cuando la regla general por `equipment` no alcanza. */
+  required_gear?: string[] | null;
+  /** Músculos detallados (porciones) con su rol. */
+  muscles?: ExerciseMuscle[];
+}
+
+export interface ExerciseMuscle {
+  code: string;
+  role: 'principal' | 'secundario';
+  position: number;
+  source: 'dataset' | 'curado';
 }
 
 export interface AreaMuscle {

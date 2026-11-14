@@ -96,6 +96,19 @@ export class ProfileService {
     this.health.set({ ...h, place_equipment: next });
   }
 
+  /** Corrige los datos personales que usa el generador (edad, peso y estatura). */
+  async savePersonal(data: {
+    birth_date: string | null;
+    weight_kg: number | null;
+    height_cm: number | null;
+  }): Promise<void> {
+    const uid = this.auth.user()?.id;
+    if (!uid) throw new Error('Sin sesión');
+    const { error } = await this.sb.from('profiles').update(data).eq('id', uid);
+    if (error) throw error;
+    await this.load(true);
+  }
+
   reset(): void {
     this.profile.set(null);
     this.health.set(null);

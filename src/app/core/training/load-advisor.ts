@@ -22,6 +22,11 @@ export interface LoadAdvice {
   step: number;
   /** Explicación de una línea. */
   reason: string;
+  /**
+   * De dónde sale el número: de los registros de la persona, de una marca de fuerza que ella
+   * declaró, o de una estimación poblacional por peso corporal (que NO es un dato suyo).
+   */
+  basis?: 'historial' | 'marca' | 'estimacion';
 }
 
 export interface LoadHistoryEntry {
@@ -190,7 +195,7 @@ export function adviseLoad(
     } else {
       reason = 'Mantén el peso y busca 1 repetición más por serie.';
     }
-    return { kg, mode, step, reason };
+    return { kg, mode, step, reason, basis: 'historial' };
   }
 
   // ---- Primera vez: e1RM estimado desde el perfil ----
@@ -236,6 +241,7 @@ export function adviseLoad(
     reason: personal
       ? 'Calculado con tu marca de fuerza. Ajústalo tras la 1.ª serie.'
       : 'Es un peso de partida: si la 1.ª serie se siente muy fácil o muy difícil, ajústalo.',
+    basis: personal ? 'marca' : 'estimacion',
   };
 }
 

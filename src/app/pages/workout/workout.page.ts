@@ -55,18 +55,25 @@ import {
   type SwapReason,
 } from '../../core/routine.service';
 import type { Alternative } from '../../core/routine/generator';
+import { BODY_AREA_OPTIONS } from '../../core/models';
+import { ProgressionService } from '../../core/progression.service';
 import {
-  adjustAfterSet,
-  adviseLoad,
-  type LoadAdvice,
-  type LoadAthlete,
-  type LoadHistoryEntry,
-} from '../../core/training/load-advisor';
+  formatLoad,
+  harderDirection,
+  nextAvailableLoad,
+  toKg,
+  type LoadSettings,
+} from '../../core/progression/load-units';
+import type { ExerciseSession } from '../../core/progression/progression';
+import { adviseSession, type SessionAdvice } from '../../core/progression/session-advice';
+import type { LoadAthlete } from '../../core/training/load-advisor';
 import { rpeFromRir, sessionMetrics } from '../../core/training/strength-math';
 import { clock, exerciseTimes, secondsBetween } from '../../core/training/session-time';
 import { setupCues, techniqueCues } from '../../core/training/technique';
 import { WorkoutService, type EndReason, type SessionSetPayload } from '../../core/workout.service';
 import { HelpButtonComponent } from '../../shared/help-button.component';
+import { LoadInputComponent } from '../../shared/load-input.component';
+import { LoadSettingsModalComponent } from '../../shared/load-settings-modal.component';
 import { beep, buzz } from '../../shared/sound';
 
 type Phase = 'loading' | 'error' | 'exercise' | 'set' | 'timed' | 'rir' | 'rest' | 'finish' | 'done';
@@ -80,7 +87,35 @@ interface Draft {
   phase: Phase;
   sets: SessionSetPayload[];
   weights: Record<string, number | null>;
+  /** Identificador del entrenamiento: reenviarlo no lo duplica. */
+  clientId?: string;
 }
+
+/** Sin datos propios: no se propone carga ni se pide. */
+const NO_ADVICE: SessionAdvice = {
+  settings: {
+    unit: 'kg',
+    unitLabel: null,
+    kind: 'corporal',
+    minIncrement: null,
+    scaleMin: null,
+    scaleMax: null,
+    startLoad: null,
+    machineName: null,
+  },
+  configured: false,
+  loadable: false,
+  mode: 'corporal',
+  suggested: null,
+  basis: 'ninguna',
+  reference: null,
+  step: null,
+  reason: '',
+  nextGoal: '',
+  progression: null,
+};
+
+const SCALE_5 = [1, 2, 3, 4, 5];
 
 const RIR_OPTIONS = [
   { rir: 0, label: '0', text: 'No podía ni una más', rpe: 'RPE 10' },
@@ -129,6 +164,8 @@ const GUIDE_OPTIONS = [
     IonModal,
     IonTextarea,
     HelpButtonComponent,
+    LoadInputComponent,
+    LoadSettingsModalComponent,
   ],
   template: `
     <ion-header>
@@ -214,29 +251,45 @@ const GUIDE_OPTIONS = [
                 }
               </ul>
 
-              @if (c.advice.kg !== null) {
+              @if (c.item.rationale) {
+                <details class="why">
+                  <summary>¿Por qué este ejercicio?</summary>
+                  <p>{{ c.item.rationale }}</p>
+                </details>
+              }
+
+              @if (c.advice.loadable) {
                 <section class="load">
-                  <p class="block-title">
-                    <ion-icon name="barbell-outline" aria-hidden="true"></ion-icon> {{ loadLabel(c.advice) }}
+                  <app-load-input
+                    [value]="weight()"
+                    [settings]="c.advice.settings"
+                    [step]="c.advice.step"
+                    (valueChange)="weight.set($event)"
+                    (configure)="settingsOpen.set(true)"
+                  ></app-load-input>
+                  <p class="hint">
+                    @if (c.advice.suggested !== null) {
+                      Propuesta: <strong>{{ loadText(c.advice.suggested, c.advice.settings) }}</strong
+                      >.
+                    }
+                    {{ c.advice.reason }}
                   </p>
-                  <div class="stepper">
-                    <ion-button fill="outline" (click)="bumpWeight(-c.advice.step)" aria-label="Menos peso">
-                      <ion-icon slot="icon-only" name="remove"></ion-icon>
-                    </ion-button>
-                    <span class="value">{{ weight() }} <small>kg</small></span>
-                    <ion-button fill="outline" (click)="bumpWeight(c.advice.step)" aria-label="Más peso">
-                      <ion-icon slot="icon-only" name="add"></ion-icon>
-                    </ion-button>
-                  </div>
-                  <p class="hint center-text">
-                    Te recomendamos <strong>{{ c.advice.kg }} kg</strong>. {{ c.advice.reason }}
-                  </p>
-                  @if (c.advice.mode === 'contrapeso') {
-                    <p class="hint center-text">Más asistencia = más fácil.</p>
+                  @if (c.advice.nextGoal) {
+                    <p class="hint"><strong>Hoy:</strong> {{ c.advice.nextGoal }}</p>
                   }
+                  @if (c.advice.reference) {
+                    <p class="hint ref">{{ c.advice.reference }}</p>
+                  }
+                  @if (c.advice.settings.kind === 'asistido') {
+                    <p class="hint">Más asistencia = más fácil.</p>
+                  }
+                  <p class="hint">Tú decides la carga: se guarda exactamente lo que registres.</p>
                 </section>
               } @else if (c.advice.reason) {
                 <p class="hint">{{ c.advice.reason }}</p>
+                <button type="button" class="link" (click)="settingsOpen.set(true)">
+                  ¿Usas lastre o asistencia? Configurar carga
+                </button>
               }
 
               @if (doneSetsFor(c.item.exercise_id); as done) {
@@ -270,21 +323,21 @@ const GUIDE_OPTIONS = [
               <h2 class="big">Serie {{ setNumber() }} de {{ c.item.sets }}</h2>
               <section class="goal">
                 <p class="goal-line strong">
-                  Haz {{ repsWords(c.item) }} repeticiones{{ weight() !== null ? ' con ' + weight() + ' kg' : '' }}.
+                  Haz {{ repsWords(c.item) }} repeticiones{{
+                    weight() !== null && c.advice.loadable ? ' con ' + loadText(weight(), c.advice.settings) : ''
+                  }}.
                 </p>
                 <p class="goal-line">Para cuando sientas que te quedan {{ target[0] }} o {{ target[1] }} más.</p>
               </section>
-              @if (c.advice.kg !== null) {
-                <p class="load-label">{{ loadLabel(c.advice) }}</p>
-                <div class="stepper">
-                  <ion-button fill="outline" (click)="bumpWeight(-c.advice.step)" aria-label="Menos peso">
-                    <ion-icon slot="icon-only" name="remove"></ion-icon>
-                  </ion-button>
-                  <span class="value">{{ weight() }} <small>kg</small></span>
-                  <ion-button fill="outline" (click)="bumpWeight(c.advice.step)" aria-label="Más peso">
-                    <ion-icon slot="icon-only" name="add"></ion-icon>
-                  </ion-button>
-                </div>
+              @if (c.advice.loadable) {
+                <app-load-input
+                  [value]="weight()"
+                  [settings]="c.advice.settings"
+                  [step]="c.advice.step"
+                  (valueChange)="weight.set($event)"
+                  (configure)="settingsOpen.set(true)"
+                ></app-load-input>
+                <p class="hint center-text">Puedes usar una carga distinta en cada serie.</p>
               }
               <p class="load-label">¿Cuántas repeticiones hiciste?</p>
               <div class="stepper">
@@ -394,12 +447,12 @@ const GUIDE_OPTIONS = [
             <p class="timer">{{ fmt(timerLeft() ?? 0) }}</p>
             <p class="center-text">
               Recupera el aire. Siguiente: <strong>serie {{ setNumber() }} de {{ current()?.item?.sets }}</strong>
-              {{ weight() !== null ? 'con ' + weight() + ' kg' : '' }}.
+              {{ restLoadText() }}.
             </p>
             @if (suggestion(); as s) {
               <div class="suggest">
                 <p>{{ s.text }}</p>
-                <ion-button size="small" (click)="applySuggestion()">Usar {{ s.kg }} kg</ion-button>
+                <ion-button size="small" (click)="applySuggestion()">Usar {{ s.label }}</ion-button>
               </div>
             }
             <div class="row">
@@ -450,6 +503,49 @@ const GUIDE_OPTIONS = [
             </div>
             <p class="hint center-text">{{ sessionRpe() ? srpeLabel(sessionRpe()!) : '' }}</p>
 
+            <p class="q">¿Cómo llegaste hoy? (recuperación)</p>
+            <p class="hint">1 = muy cansado/a o adolorido/a · 5 = totalmente recuperado/a. Opcional.</p>
+            <div class="scale">
+              @for (n of scale5; track n) {
+                <button
+                  class="dot"
+                  [class.on]="readiness() === n"
+                  (click)="readiness.set(readiness() === n ? null : n)"
+                >
+                  {{ n }}
+                </button>
+              }
+            </div>
+            <p class="q">¿Qué tan fatigado/a quedaste?</p>
+            <p class="hint">1 = nada · 5 = agotado/a. Opcional.</p>
+            <div class="scale">
+              @for (n of scale5; track n) {
+                <button class="dot" [class.on]="fatigue() === n" (click)="fatigue.set(fatigue() === n ? null : n)">
+                  {{ n }}
+                </button>
+              }
+            </div>
+            <p class="q">¿Sentiste dolor o molestia en alguna zona?</p>
+            <p class="hint">Si no marcas nada, no se asume nada. Con molestias no se recomiendan aumentos de carga.</p>
+            <div class="reasons">
+              @for (a of bodyAreas; track a.value) {
+                <button class="reason" [class.on]="discomfort().includes(a.value)" (click)="toggleDiscomfort(a.value)">
+                  {{ a.label }}
+                </button>
+              }
+            </div>
+            @if (discomfort().length > 0) {
+              <ion-textarea
+                label="¿Qué sentiste? (opcional)"
+                labelPlacement="floating"
+                fill="outline"
+                [maxlength]="300"
+                [autoGrow]="true"
+                [value]="discomfortNote()"
+                (ionInput)="discomfortNote.set($event.detail.value ?? '')"
+              ></ion-textarea>
+            }
+
             <p class="q">¿Te sirvió la guía de hoy?</p>
             <p class="hint">Las indicaciones, el peso recomendado y el orden de los ejercicios.</p>
             <div class="grid5">
@@ -495,7 +591,13 @@ const GUIDE_OPTIONS = [
               <div>
                 <strong>{{ summary().tonnage }} kg</strong>
                 <span>movidos</span>
-                <small>Peso × repeticiones de todo el día. Si sube con las semanas, progresas.</small>
+                <small
+                  >Peso × repeticiones de todo el día. Si sube con las semanas, progresas.
+                  @if (summary().nonMassSets > 0) {
+                    No incluye {{ summary().nonMassSets }} series registradas en niveles o placas: no tienen
+                    equivalencia en kilos.
+                  }
+                </small>
               </div>
               @if (sessionRpe(); as r) {
                 <div>
@@ -523,7 +625,7 @@ const GUIDE_OPTIONS = [
               {{
                 saved() === 'pending'
                   ? 'Sin conexión: lo guardamos en tu teléfono y se enviará solo.'
-                  : 'Guardado. Con estos datos ajustaremos tu peso la próxima vez.'
+                  : 'Guardado. La próxima recomendación saldrá de estos registros; nunca se modifican solos.'
               }}
             </p>
           }
@@ -585,11 +687,12 @@ const GUIDE_OPTIONS = [
             <div class="center"><ion-spinner></ion-spinner></div>
           } @else if (alternatives().length === 0) {
             <p>
-              No encontramos otro ejercicio seguro para este músculo con tu equipamiento. Pide ayuda al profesor de
-              sala.
+              No hay en el catálogo otro ejercicio equivalente (mismo músculo principal y mismo patrón de movimiento)
+              que puedas hacer con tu equipamiento y limitaciones. No te ofrecemos uno "parecido": pide ayuda al
+              profesor de sala.
             </p>
           } @else {
-            <p class="block-title">Elige uno que trabaje lo mismo:</p>
+            <p class="block-title">Elige uno equivalente (mismo músculo y mismo movimiento):</p>
             @for (a of alternatives(); track a.exercise.id) {
               <button class="alt" [disabled]="swapping()" (click)="chooseAlternative(a)">
                 @if (catalogImage(a); as img) {
@@ -598,6 +701,9 @@ const GUIDE_OPTIONS = [
                 <span>
                   <strong>{{ altName(a) }}</strong>
                   <small>{{ a.item.sets }} × {{ repsText(a.item) }} · {{ equipmentLabel(a) }}</small>
+                  @if (a.why) {
+                    <small class="alt-why">Equivalente por: {{ a.why }}</small>
+                  }
                 </span>
               </button>
             }
@@ -606,6 +712,14 @@ const GUIDE_OPTIONS = [
         </ion-content>
       </ng-template>
     </ion-modal>
+
+    <app-load-settings-modal
+      [open]="settingsOpen()"
+      [exerciseName]="current()?.name ?? ''"
+      [settings]="current()?.advice?.settings ?? noAdvice.settings"
+      (saved)="saveLoadSettings($event)"
+      (closed)="settingsOpen.set(false)"
+    ></app-load-settings-modal>
 
     <!-- Barra inferior: anterior · acción principal · siguiente (Ley de Fitts) -->
     @if (primaryAction() || showNav()) {
@@ -712,6 +826,35 @@ const GUIDE_OPTIONS = [
     }
     .cues li {
       margin: 4px 0;
+    }
+    .why {
+      margin: 8px 0;
+      font-size: 0.9rem;
+    }
+    .why summary {
+      color: var(--ion-color-primary);
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+    .why p {
+      margin: 0 0 8px;
+    }
+    .ref {
+      font-style: italic;
+    }
+    .link {
+      background: transparent;
+      border: 0;
+      padding: 0;
+      min-height: 44px;
+      color: var(--ion-color-primary);
+      text-align: left;
+    }
+    .alt-why {
+      display: block;
+      opacity: 0.85;
     }
     .load {
       border-top: 1px solid var(--ion-color-light);
@@ -1129,6 +1272,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
   private readonly routines = inject(RoutineService);
   private readonly workouts = inject(WorkoutService);
   private readonly profiles = inject(ProfileService);
+  private readonly progression = inject(ProgressionService);
   private readonly router = inject(Router);
   private readonly alerts = inject(AlertController);
   private readonly toasts = inject(ToastController);
@@ -1190,7 +1334,18 @@ export class WorkoutPage implements OnInit, OnDestroy {
   ];
   readonly now = signal(Date.now());
   readonly frameIndex = signal(0);
-  readonly suggestion = signal<{ text: string; kg: number } | null>(null);
+  readonly suggestion = signal<{ text: string; value: number; label: string } | null>(null);
+  /** Configuración de carga por ejercicio (propia de la persona con sesión). */
+  readonly loadSettings = signal<Map<string, LoadSettings>>(new Map());
+  readonly settingsOpen = signal(false);
+  /** Estado declarado por la persona al cerrar la sesión (todo opcional). */
+  readonly readiness = signal<number | null>(null);
+  readonly fatigue = signal<number | null>(null);
+  readonly discomfort = signal<string[]>([]);
+  readonly discomfortNote = signal('');
+  readonly scale5 = SCALE_5;
+  readonly bodyAreas = BODY_AREA_OPTIONS;
+  readonly noAdvice = NO_ADVICE;
   readonly sessionRpe = signal<number | null>(null);
   readonly guideRating = signal<number | null>(null);
   readonly feedback = signal('');
@@ -1206,7 +1361,11 @@ export class WorkoutPage implements OnInit, OnDestroy {
   private athlete: LoadAthlete | null = null;
   /** RIR objetivo según el perfil (principiante 2-3, resto 1-2). */
   target: [number, number] = [2, 3];
-  private history = new Map<string, LoadHistoryEntry[]>();
+  /** Sesiones anteriores por ejercicio: solo de la persona con sesión (RLS). */
+  private readonly history = signal<Map<string, ExerciseSession[]>>(new Map());
+  /** Cambios de carga que la persona rechazó. */
+  private rejected = new Map<string, number>();
+  private clientId: string = crypto.randomUUID();
   private ticker: ReturnType<typeof setInterval> | null = null;
   private wakeLock: { release: () => Promise<void> } | null = null;
   private readonly reducedMotion =
@@ -1246,6 +1405,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
         phase: phase === 'rest' || phase === 'rir' ? 'set' : phase,
         sets: this.sets(),
         weights: this.weights(),
+        clientId: this.clientId,
       };
       localStore.set(this.draftKey(), draft);
     });
@@ -1260,9 +1420,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
     if (!item) return null;
     const ex = this.catalog.byId().get(item.exercise_id);
     const timed = item.reps_min === 1 && item.reps_max === 1;
-    const advice = ex
-      ? this.adviceFor(ex, item, timed)
-      : ({ kg: null, mode: 'corporal', step: 0, reason: '' } as LoadAdvice);
+    const advice = ex ? this.adviceFor(ex, item, timed) : NO_ADVICE;
     return {
       item,
       ex,
@@ -1343,6 +1501,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
     const m = sessionMetrics(this.sets());
     const end = this.finishedAt() ? new Date(this.finishedAt()!).getTime() : Date.now();
     return {
+      nonMassSets: this.sets().filter((x) => typeof x.load_value === 'number' && x.weight_kg === null).length,
       minutes: Math.max(1, Math.round((end - new Date(this.startedAt).getTime() - this.pausedTotalMs) / 60000)),
       effectiveSets: m.effectiveSets,
       tonnage: m.tonnage,
@@ -1414,15 +1573,22 @@ export class WorkoutPage implements OnInit, OnDestroy {
       }
       // Perfil e historial ANTES de publicar el día: la recomendación de peso depende de ambos.
       this.buildAthlete();
-      this.history = await this.workouts
-        .history([...new Set(day.routine_exercises.map((e) => e.exercise_id))])
-        .catch(() => new Map());
+      const ids = [...new Set(day.routine_exercises.map((e) => e.exercise_id))];
+      const [sessions, settings, rejected] = await Promise.all([
+        this.progression.sessions(ids).catch(() => new Map<string, ExerciseSession[]>()),
+        this.progression.loadSettings().catch(() => new Map<string, LoadSettings>()),
+        this.progression.rejectedLoads().catch(() => new Map<string, number>()),
+      ]);
+      this.history.set(sessions);
+      this.loadSettings.set(settings);
+      this.rejected = rejected;
       this.day.set(day);
 
       const draft = localStore.get<Draft>(this.draftKey());
       const fresh = draft && Date.now() - new Date(draft.startedAt).getTime() < 12 * 3600_000;
       if (draft && fresh) {
         this.startedAt = draft.startedAt;
+        this.clientId = draft.clientId ?? this.clientId;
         this.sets.set(draft.sets);
         this.weights.set(draft.weights);
         this.index.set(Math.min(draft.index, day.routine_exercises.length));
@@ -1489,7 +1655,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
         exercise_id: c.item.exercise_id,
         set_number: this.setNumber(),
         reps: this.reps(),
-        weight_kg: this.weight(),
+        ...this.loadFields(c.advice),
         rir: null,
         duration_s: secondsBetween(this.setStartedAt(), Date.now()),
         rest_s: this.pendingRest,
@@ -1516,17 +1682,27 @@ export class WorkoutPage implements OnInit, OnDestroy {
       this.rirChosen.set(rir);
       return;
     }
-    // Autorregulación: si el RIR real se aleja del objetivo, sugerimos ajustar el peso.
-    const delta = this.weight() === null ? 0 : adjustAfterSet(rir, this.target, c.advice.mode, this.weight()!);
+    // Autorregulación: si el RIR real se aleja del objetivo, se SUGIERE (no se aplica) el siguiente
+    // salto que exista en el equipo. Si no existe (tope de la máquina), no se sugiere nada.
+    const [lo, hi] = this.targetFor(c.item);
+    const w = this.weight();
+    const settings = c.advice.settings;
+    const up = harderDirection(settings.kind);
+    const dir = rir < lo ? (-up as 1 | -1) : rir > hi ? up : 0;
+    const next =
+      w === null || dir === 0 || !c.advice.loadable
+        ? null
+        : nextAvailableLoad(w, settings, c.ex?.mechanic === 'isolation', dir);
     this.suggestion.set(
-      delta === 0
+      next === null
         ? null
         : {
-            kg: Math.max(0, this.weight()! + delta),
+            value: next,
+            label: formatLoad(next, settings.unit, settings.unitLabel),
             text:
-              delta > 0
-                ? `Te sobraron ${rir >= 4 ? '4 o más' : rir}: en la siguiente serie súbele un poco (RPE ${rpeFromRir(rir)}).`
-                : `Fue muy pesado (te quedaban ${rir}): en la siguiente serie bájale un poco (RPE ${rpeFromRir(rir)}).`,
+              rir > hi
+                ? `Te sobraron ${rir >= 4 ? '4 o más' : rir}: si quieres, haz la siguiente serie más exigente (RPE ${rpeFromRir(rir)}).`
+                : `Fue muy pesado (te quedaban ${rir}): si quieres, haz la siguiente serie más liviana (RPE ${rpeFromRir(rir)}).`,
           },
     );
     this.setNumber.update((n) => n + 1);
@@ -1652,8 +1828,25 @@ export class WorkoutPage implements OnInit, OnDestroy {
     this.timerEndsAt.set(null);
   }
 
-  bumpWeight(delta: number) {
-    this.weight.update((w) => Math.max(0, Math.round(((w ?? 0) + delta) * 10) / 10));
+  toggleDiscomfort(area: string) {
+    this.discomfort.update((list) => (list.includes(area) ? list.filter((x) => x !== area) : [...list, area]));
+  }
+
+  /** Guarda la configuración de carga de este ejercicio para la persona con sesión. */
+  async saveLoadSettings(settings: LoadSettings) {
+    const c = this.current();
+    if (!c) return;
+    try {
+      await this.progression.saveSettings(c.item.exercise_id, settings);
+      this.loadSettings.update((m) => new Map(m).set(c.item.exercise_id, settings));
+      this.settingsOpen.set(false);
+      // Con otra unidad, la carga anterior deja de tener sentido: se vuelve a la propuesta.
+      this.weights.update((w) => ({ ...w, [c.item.exercise_id]: null }));
+      this.weight.set(this.current()?.advice.suggested ?? null);
+      await this.toast('Configuración guardada. Tu historial no cambió.');
+    } catch {
+      await this.toast('No se pudo guardar la configuración. Revisa tu internet.');
+    }
   }
 
   bumpReps(delta: number) {
@@ -1662,7 +1855,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
 
   applySuggestion() {
     const s = this.suggestion();
-    if (s) this.weight.set(s.kg);
+    if (s) this.weight.set(s.value);
     this.suggestion.set(null);
   }
 
@@ -1753,9 +1946,9 @@ export class WorkoutPage implements OnInit, OnDestroy {
     this.swapping.set(true);
     try {
       await this.routines.swapExercise(routine.id, oldId, alt.item, this.swapReason());
-      // Historial del nuevo ejercicio para recomendar su peso.
-      const hist = await this.workouts.history([alt.exercise.id]).catch(() => new Map());
-      this.history = new Map([...this.history, ...hist]);
+      // Historial propio del nuevo ejercicio para proponer su carga.
+      const hist = await this.progression.sessions([alt.exercise.id]).catch(() => new Map<string, ExerciseSession[]>());
+      this.history.update((m) => new Map([...m, ...hist]));
       // Reemplaza en el día actual (misma posición), sin perder lo ya registrado hoy.
       this.day.update((d) =>
         d
@@ -1828,6 +2021,11 @@ export class WorkoutPage implements OnInit, OnDestroy {
         skipped_exercises: this.items()
           .map((i) => i.exercise_id)
           .filter((id) => this.doneSetsFor(id) === 0),
+        client_id: this.clientId,
+        readiness: this.readiness(),
+        fatigue: this.fatigue(),
+        discomfort_areas: this.discomfort(),
+        discomfort_note: this.discomfort().length ? this.discomfortNote().trim() || null : null,
         sets: this.sets(),
       });
       this.saved.set(result);
@@ -1867,10 +2065,48 @@ export class WorkoutPage implements OnInit, OnDestroy {
     return item.reps_min === item.reps_max ? `${item.reps_min}` : `${item.reps_min}-${item.reps_max}`;
   }
 
-  loadLabel(a: LoadAdvice): string {
-    if (a.mode === 'mancuerna') return 'Peso de cada mancuerna';
-    if (a.mode === 'contrapeso') return 'Asistencia de la máquina';
-    return 'Peso total';
+  loadText(value: number | null, settings: LoadSettings): string {
+    return formatLoad(value, settings.unit, settings.unitLabel);
+  }
+
+  restLoadText(): string {
+    const c = this.current();
+    const w = this.weight();
+    return c && c.advice.loadable && w !== null ? `con ${this.loadText(w, c.advice.settings)}` : '';
+  }
+
+  /** RIR objetivo del ejercicio: el de la rutina si lo trae; si no, el del perfil. */
+  targetFor(item: StoredExercise): [number, number] {
+    return typeof item.rir_min === 'number' && typeof item.rir_max === 'number'
+      ? [item.rir_min, item.rir_max]
+      : this.target;
+  }
+
+  /** Campos de carga de una serie: lo que la persona registró, en su unidad, sin convertir niveles. */
+  private loadFields(
+    advice: SessionAdvice,
+  ): Pick<SessionSetPayload, 'weight_kg' | 'load_value' | 'load_unit' | 'load_kind' | 'bodyweight_kg' | 'unit_label'> {
+    const s = advice.settings;
+    const bodyweight = this.athlete?.bodyweightKg ?? null;
+    if (!advice.loadable) {
+      return {
+        weight_kg: null,
+        load_value: null,
+        load_unit: 'kg',
+        load_kind: 'corporal',
+        bodyweight_kg: bodyweight,
+        unit_label: null,
+      };
+    }
+    const value = this.weight();
+    return {
+      weight_kg: toKg(value, s.unit),
+      load_value: value,
+      load_unit: s.unit,
+      unit_label: s.unit === 'otro' ? s.unitLabel : null,
+      load_kind: s.kind,
+      bodyweight_kg: s.kind === 'lastre' || s.kind === 'asistido' ? bodyweight : null,
+    };
   }
 
   repsWords(item: StoredExercise): string {
@@ -1950,7 +2186,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
     this.target = p.programme.rir;
   }
 
-  private adviceFor(ex: Exercise, item: StoredExercise, timed: boolean): LoadAdvice {
+  private adviceFor(ex: Exercise, item: StoredExercise, timed: boolean): SessionAdvice {
     const athlete = this.athlete ?? {
       bodyweightKg: null,
       gender: null,
@@ -1959,10 +2195,15 @@ export class WorkoutPage implements OnInit, OnDestroy {
       senior: false,
       cautious: false,
     };
-    return adviseLoad(ex, item, athlete, this.history.get(ex.id) ?? [], {
-      timed,
-      assisted: /asistida/i.test(item.notes ?? ''),
-    });
+    const [rirMin, rirMax] = this.targetFor(item);
+    return adviseSession(
+      ex,
+      { sets: item.sets, repsMin: item.reps_min, repsMax: item.reps_max, rirMin, rirMax },
+      athlete,
+      this.history().get(ex.id) ?? [],
+      this.loadSettings().get(ex.id) ?? null,
+      { timed, assisted: /asistida/i.test(item.notes ?? ''), rejectedLoad: this.rejected.get(ex.id) ?? null },
+    );
   }
 
   /** Deja listo el ejercicio actual: peso sugerido (o el que ya usó hoy) y repeticiones objetivo. */
@@ -1973,7 +2214,7 @@ export class WorkoutPage implements OnInit, OnDestroy {
       return;
     }
     const usedToday = this.weights()[c.item.exercise_id];
-    this.weight.set(usedToday ?? c.advice.kg);
+    this.weight.set(usedToday ?? c.advice.suggested);
     this.reps.set(c.item.reps_max);
     this.frameIndex.set(0);
     this.phase.set(phase);

@@ -23,15 +23,16 @@
 4. [Stack tecnológico](#stack-tecnológico)
 5. [Estructura del repositorio](#estructura-del-repositorio)
 6. [Motor de rutinas basado en evidencia](#motor-de-rutinas-basado-en-evidencia)
-7. [Puesta en marcha](#puesta-en-marcha)
-8. [Base de datos y migraciones](#base-de-datos-y-migraciones)
-9. [Calidad y pruebas](#calidad-y-pruebas)
-10. [CI/CD y despliegue](#cicd-y-despliegue)
-11. [Seguridad](#seguridad)
-12. [Accesibilidad y UX](#accesibilidad-y-ux)
-13. [PWA y modo sin conexión](#pwa-y-modo-sin-conexión)
-14. [Limitaciones conocidas](#limitaciones-conocidas)
-15. [Aviso importante](#aviso-importante)
+7. [Sistema de entrenamiento para dos personas](#sistema-de-entrenamiento-para-dos-personas)
+8. [Puesta en marcha](#puesta-en-marcha)
+9. [Base de datos y migraciones](#base-de-datos-y-migraciones)
+10. [Calidad y pruebas](#calidad-y-pruebas)
+11. [CI/CD y despliegue](#cicd-y-despliegue)
+12. [Seguridad](#seguridad)
+13. [Accesibilidad y UX](#accesibilidad-y-ux)
+14. [PWA y modo sin conexión](#pwa-y-modo-sin-conexión)
+15. [Limitaciones conocidas](#limitaciones-conocidas)
+16. [Aviso importante](#aviso-importante)
 
 ---
 
@@ -65,7 +66,13 @@ Principios de diseño:
 | **Progreso** | Tonelaje, series efectivas, constancia y peso corporal. |
 | **Ciencia** | Lista de referencias (PubMed, Journal of Strength and Conditioning Research y libros), búsqueda en vivo en PubMed y verificación automática de las citas. |
 | **Mensajes** | Bandeja con avisos útiles generados a partir del perfil y la actividad. |
-| **Fichas de ejercicio** | Para qué sirve, ventajas y cuidados en tres líneas, más claves de técnica. |
+| **Fichas de ejercicio** | Para qué sirve, ventajas y cuidados en tres líneas, más claves de técnica y ficha técnica (patrón, músculos por porción, errores, precauciones, variantes). |
+| **Cargas flexibles** | Cualquier peso escrito a mano (con decimales), kg, lb, niveles de máquina, placas u otra unidad; carga por serie, por lado, lastre o asistencia. Configuración propia por máquina. |
+| **Progresión** | Doble progresión por reglas con los registros reales: sube solo si todas las series llegan al tope del rango con el RIR objetivo. Detecta estancamiento y caídas. Se acepta o rechaza. |
+| **Informe semanal** | Cumplimiento, volumen directo e indirecto por músculo, evolución por ejercicio, desequilibrios, fatiga y molestias declaradas, recomendaciones justificadas. |
+| **Evolución** | Progresión por ejercicio con filtro de fechas, comparación entre semanas, mediciones corporales y metas. |
+| **Pareja** | Vínculo opcional entre dos cuentas: compartir una rutina (sin cargas) y comparación agregada solo con consentimiento. |
+| **Mis datos** | Exportar (JSON / CSV), importar sin duplicar e historial de modificaciones. |
 
 ## Arquitectura
 
@@ -81,8 +88,9 @@ flowchart LR
     end
 ```
 
-- **Sin backend propio.** La lógica de negocio crítica corre en el cliente (generador y asesor de cargas)
-  y la autorización la imponen las políticas RLS y las funciones `SECURITY INVOKER` de Postgres.
+- **Sin servidor de aplicación propio.** Las reglas de entrenamiento (generador, progresión, informe) son
+  módulos TypeScript puros, separados de la interfaz y probados; la integridad, la validación y la
+  autorización las imponen Postgres (RLS, `CHECK`, claves foráneas) y sus funciones RPC.
 - **Estado reactivo** con *signals* de Angular; rutas perezosas por pantalla; Three.js se carga solo en
   la pantalla de crear rutina.
 - **Offline-first** para la rutina activa (almacenamiento local del dispositivo) y cola de entrenamientos pendientes.
@@ -165,6 +173,135 @@ perfil**:
 La lista completa y sus conclusiones prácticas están en `src/app/core/evidence/references.ts` y en la
 pantalla **Ciencia** de la app, que verifica cada cita contra PubMed (título + año).
 
+## Sistema de entrenamiento para dos personas
+
+Mejora integral para que dos personas (por ejemplo, una pareja) entrenen con perfiles **independientes**.
+Principio rector: *preferimos decir "no hay datos suficientes" antes que inventar una recomendación*.
+
+### Datos de referencia analizados
+
+Se revisaron [Gym-Membership-Attendance-Tracker-System](https://github.com/CSPruthveesh/Gym-Membership-Attendance-Tracker-System)
+y [Fithub](https://github.com/Ajha2005/Fithub). Ambos son sistemas de **gestión de gimnasio** (socios, planes,
+pagos, asistencia, mantenimiento de equipos); no traen catálogo de ejercicios, series ni progresión, así que no
+había datos útiles que importar. Se aprovechó su diseño: restricciones `CHECK` con nombre, auditoría por
+disparadores (`Member_Status_Logs`), metas con estado (`member_fitness_goals`) y mediciones corporales
+(`member_body_metrics`). Se mejoró lo que limitaba: aquí todo es por usuario autenticado con RLS, las metas
+tienen relación con el ejercicio o la medida, y la auditoría guarda el valor anterior **y** el nuevo.
+
+### Arquitectura de las piezas nuevas
+
+| Capa | Archivo | Qué hace |
+| --- | --- | --- |
+| Anatomía | `core/anatomy/muscles.ts` | 62 músculos y porciones (grupo → músculo → porción) y 27 patrones de movimiento. Fuente única de las tablas `muscles` y `movement_patterns`. |
+| Catálogo | `core/catalog/curated.ts` | 102 fichas revisadas a mano (8 ejercicios propios `DV_`). Lo no revisado queda `pendiente_revision`. |
+| Generador | `core/routine/generator.ts` | Reglas sin azar; cobertura de aductores, abductores y pantorrillas; historial; justificación por ejercicio; sustitución por patrón. |
+| Progresión | `core/progression/` | Unidades de carga, doble progresión y propuesta de carga de cada sesión. |
+| Análisis | `core/analysis/` | Informe semanal y series históricas por ejercicio (funciones puras). |
+| Datos | `core/data/export.ts` | CSV y JSON de ida y vuelta. |
+| Servicios | `*.service.ts` | Acceso a Supabase; nunca contienen reglas de entrenamiento. |
+| Pantallas | `pages/report`, `evolution`, `partner`, `data` | Solo presentación. |
+
+Las reglas (generador, progresión, informe) son TypeScript puro sin dependencias de Angular, probadas con
+datos sintéticos. La integridad la impone la base: claves foráneas, `CHECK`, RLS y funciones RPC que validan.
+
+### Catálogo y anatomía
+
+- `exercise_muscles` relaciona cada ejercicio con sus músculos (`principal` / `secundario`). En las fichas
+  verificadas usa porciones (pectoral clavicular, vasto medial…); en el resto, el músculo grueso del dataset,
+  sin inventar porciones.
+- Cada ejercicio tiene `movement_pattern`, `muscle_function`, `common_errors`, `precautions`,
+  `safety_notes`, `variants`, rango de repeticiones orientativo y `review_status`. Los patrones de lo no
+  revisado se deducen del nombre y se muestran como "pendiente de revisión".
+- Los músculos originales del dataset se conservan en `dataset_muscles` (la reversa los restaura).
+- Para editar el catálogo: cambia `muscles.ts` o `curated.ts` y ejecuta `node scripts/build-catalog-sql.mjs`,
+  que valida los códigos y regenera `014_catalog_seed.sql`.
+
+### Aductores
+
+Trabajo directo: máquina de aductores, aducción en polea, con banda, tumbado de lado y plancha Copenhague.
+Participación secundaria registrada en sentadillas (incluidas plié y abierta), prensa, peso muerto sumo,
+zancada lateral, hip thrust y peso muerto rumano, entre otros.
+
+El generador asegura **al menos un ejercicio directo de aductores por semana** con cualquier nivel, días y
+duración (probado en 60 combinaciones). Si no cabe, puede alargar la sesión hasta 8 minutos con 2 series; si
+no hay ningún ejercicio posible (equipo o lesión), lo dice en las notas en lugar de omitirlo en silencio.
+Abductores y pantorrillas entran si caben, y si no, también se avisa.
+
+### Generador de rutinas
+
+- Determinista: los mismos datos dan la misma rutina (se eliminó el azar).
+- Antes de generar exige experiencia, objetivo, días, duración, última vez que entrenó, edad, lugar y equipo
+  confirmado. Si falta algo, lo pide (`MissingRoutineDataError`).
+- Usa el historial **de la propia persona** (últimos 60 días): mantiene los ejercicios con progresión en
+  curso, rota los estancados por una variante equivalente y avisa si el primer día repite un grupo entrenado
+  hace menos de 48 h.
+- Cada lugar de la plantilla lo ocupa un ejercicio cuyo **motor primario** es ese músculo.
+- Cada ejercicio guarda RIR objetivo, tempo (solo donde aporta) y una justificación con músculos, patrón,
+  equipo y motivo; cada día guarda su objetivo.
+- **Sustitución**: solo se ofrece un ejercicio con el mismo músculo principal y el mismo patrón de movimiento
+  (o, si falta el patrón, el mismo tipo compuesto/aislado), compatible con equipo, nivel, lesiones y
+  preferencias. Si no existe, no se ofrece "algo parecido". Una prensa nunca reemplaza a la máquina de aductores.
+
+### Cargas flexibles
+
+- El campo de carga es libre: 5, 7, 12,5, 17,5, 22,5… sin lista de valores. Los botones + y − son un atajo.
+- Unidades: `kg`, `lb`, `nivel`, `placas`, `otro` (con nombre propio). Tipos: total, por lado, peso
+  corporal, lastre, asistido. Se guarda `load_value` + `load_unit` tal cual; `weight_kg` solo existe para kg
+  y lb. **Un nivel nunca se convierte a kilos** (la base lo impide con un `CHECK`).
+- `exercise_load_settings` (por persona y ejercicio): unidad, salto mínimo, rango de la máquina, carga
+  inicial y nombre. Todo opcional; lo que no se define no se inventa.
+- La app **nunca** modifica una carga registrada: solo propone.
+
+### Progresión semanal
+
+Doble progresión (`core/progression/progression.ts`) sobre las sesiones reales de un ejercicio:
+
+| Situación | Resultado |
+| --- | --- |
+| Todas las series en el tope del rango y RIR ≥ objetivo | Sube al **siguiente valor que existe** en el equipo (nunca "nivel 5,5") |
+| Salto > 10 % o de tamaño desconocido (niveles) | Pide confirmarlo en una segunda sesión |
+| Tope sin RIR registrado o al límite | Mantiene |
+| Dentro del rango | Mantiene y suma repeticiones |
+| Bajo el mínimo | Mantiene; si se repite, baja un salto |
+| 3 sesiones igual con la misma carga | Estancamiento |
+| Tope de la máquina | Progresa con repeticiones o tempo |
+| Sin registros | `sin_datos`: usa la carga inicial configurada o deja el campo vacío |
+
+Escenario de referencia (probado): press de banca 30 kg, 3 × 8-12, RIR 2 → semanas 10/9/8, 11/10/9, 12/12/11
+mantienen; 12/12/12 sube a 32,5 kg. Repetir 10/9/8 cuatro semanas **no** sube y marca estancamiento.
+
+No se mezclan sesiones en unidades distintas. La progresión se ordena por la fecha real del entrenamiento
+(vista `set_history`), no por la fecha de importación. Las estimaciones por peso corporal ya no rellenan el
+campo: se muestran como "referencia orientativa, no es un dato tuyo".
+
+### Informe semanal automático
+
+Al abrir Inicio se generan en segundo plano los informes de las semanas **terminadas** que falten
+(`weekly_reports`, uno por lunes) y se guardan las recomendaciones de carga (`load_recommendations`) para
+aceptarlas o rechazarlas. Rechazar se respeta en la siguiente sesión. El informe declara lo que no pudo
+analizar (sin RIR, sin semanas previas, sin rutina activa, sin recuperación declarada) y no asume que hubo
+recuperación. Fatiga alta o molestias declaradas frenan las subidas.
+
+### Dos perfiles independientes
+
+- Cada persona tiene su cuenta: perfil, cuestionario, rutinas, configuración de máquinas, historial,
+  informes, metas y mediciones. RLS impide leer o escribir datos ajenos (probado).
+- `partner_links`: vínculo opcional por correo, que la otra persona debe aceptar.
+- `share_routine_with_partner`: la otra persona recibe una **copia inactiva** sin cargas; cada quien la edita
+  y progresa con su historial.
+- `partner_weekly_summary`: solo conteos (sesiones, minutos, series por grupo) y solo si la otra persona
+  activó compartir. Nunca pesos, repeticiones ni datos de salud, y nada de esto alimenta recomendaciones.
+
+### Datos, auditoría y respaldos
+
+- `export_my_data()` (JSON completo) y CSV con una fila por serie; `import_my_workouts()` importa con
+  `client_id` (no duplica) y rechaza completos los entrenamientos inválidos, informando el motivo.
+- `audit_log`: cada `UPDATE`/`DELETE` de series, entrenamientos, mediciones, configuración, metas y perfil
+  guarda el valor anterior y el nuevo. Solo lectura para su dueño.
+- `log_workout` es idempotente por `client_id` (los reintentos sin conexión no duplican) y rechaza unidades
+  desconocidas, ejercicios inexistentes y fechas futuras.
+- `scripts/backup.sh`: respaldo con `pg_dump` (carpeta `backups/`, ignorada por git, permisos 600).
+
 ## Puesta en marcha
 
 **Requisitos:** Node 22+, npm, Docker (solo para Supabase local).
@@ -199,6 +336,14 @@ SUPABASE_URL=http://127.0.0.1:54421 SUPABASE_SERVICE_ROLE_KEY=<service_role loca
   node scripts/import-exercises.mjs
 ```
 
+Después aplica las migraciones nuevas (el esquema base llega hasta la 012):
+
+```bash
+for f in supabase/migrations/01[3-8]_*.sql; do
+  docker exec -i supabase_db_dinovance-gym psql -U postgres -v ON_ERROR_STOP=1 --single-transaction < "$f"
+done
+```
+
 La clave local la muestra `npx supabase status`. El script carga
 [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (Unlicense) en `public.exercises`.
 
@@ -225,6 +370,16 @@ SUPABASE_DB_URL="postgresql://..." scripts/migrate.sh             # aplica las p
 | `010` | Límites de ejercicios por día en el servidor |
 | `011` | Enfoque, nutrición y estrés; peso corporal (`body_metrics`); `replace_day_exercises` |
 | `012` | Marcas de fuerza (`strength_marks`) y frecuencia por músculo (`muscle_frequency`) |
+| `013` | Anatomía y catálogo avanzado: `muscles`, `movement_patterns`, `exercise_muscles`, ficha de ejercicio, vista `exercise_catalog` |
+| `014` | Datos del catálogo (generada por `scripts/build-catalog-sql.mjs`) |
+| `015` | Cargas flexibles (`exercise_load_settings`, unidades en `set_logs`), estado declarado, idempotencia, vista `set_history` |
+| `016` | `load_recommendations`, `weekly_reports`, `fitness_goals`, `body_measurements`; RIR, tempo, justificación y objetivo en rutinas |
+| `017` | Vínculo de pareja y sus funciones |
+| `018` | `audit_log`, `export_my_data`, `import_my_workouts` |
+
+Las migraciones 013 a 018 tienen reversa en `supabase/migrations/down/` y se pueden revertir con
+`scripts/migrate-down.sh NNN` (haz antes un respaldo con `scripts/backup.sh`). La reversa conserva el
+historial de entrenamientos; solo se pierde lo que agregan esas migraciones.
 
 Modelo de seguridad de datos: cada tabla de usuario tiene una política `propio` (`user_id = auth.uid()`),
 los catálogos son de solo lectura y las funciones RPC son `SECURITY INVOKER` con `search_path` fijo.
@@ -239,8 +394,10 @@ los catálogos son de solo lectura y las funciones RPC son `SECURITY INVOKER` co
 | `npm run test:unit` | Pruebas unitarias (Vitest): generador, cargas, marcas, equipo |
 | `npx playwright test` | Pruebas e2e (Chrome instalado) |
 | `node scripts/check-secrets.mjs` | Busca claves privadas en archivos versionados |
+| `scripts/test-db.sh` | Pruebas de integración de la base sobre una copia desechable: migraciones dos veces, RLS entre dos personas, unidades, idempotencia, pareja, auditoría, importación y reversas |
 
-La última auditoría de calidad cubrió: 64 pruebas unitarias, e2e, 28 flujos funcionales en navegador,
+Pruebas unitarias actuales: 109 (generador, aductores, progresión con escenarios reales, informe semanal,
+cargas, CSV/JSON). La auditoría anterior cubrió: 64 pruebas unitarias, e2e, 28 flujos funcionales en navegador,
 auditoría **axe-core** en 10 pantallas (claro y oscuro), revisión de cabeceras y política CSP con
 `wrangler dev`, y `npm audit` de producción sin vulnerabilidades.
 
@@ -324,6 +481,13 @@ público).
 - Los estándares de fuerza por peso corporal son referencias prácticas (Rippetoe), no un diagnóstico.
 - El migrador es propio y mínimo (sin migraciones de reversa): las migraciones solo agregan estructura.
 - La velocidad de barra (VBT) no se mide: requiere un sensor.
+- 102 ejercicios tienen ficha verificada; el resto (≈780) conserva los músculos del dataset y su patrón está
+  deducido del nombre o pendiente. La interfaz lo indica en cada ficha.
+- Los ejercicios propios (`DV_`) no tienen imágenes.
+- El informe semanal se genera al abrir la app (no hay tarea programada en el servidor); el cálculo corre en
+  el dispositivo con funciones puras y probadas, y la base valida todo lo que se guarda.
+- Los rangos de volumen por músculo existen para los grupos grandes; aductores, abductores y otros se
+  muestran "sin referencia" en lugar de inventar un rango.
 
 ## Aviso importante
 

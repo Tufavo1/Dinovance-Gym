@@ -1,5 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import {
   IonButton,
   IonButtons,
@@ -50,6 +51,7 @@ const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', '
   selector: 'app-progress',
   imports: [
     FormsModule,
+    RouterLink,
     IonHeader,
     IonToolbar,
     IonTitle,
@@ -93,6 +95,13 @@ const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', '
           <ion-note color="danger">{{ error() }}</ion-note>
           <ion-button expand="block" (click)="load()">Reintentar</ion-button>
         } @else if (s(); as st) {
+          <nav class="more" aria-label="Más análisis">
+            <ion-button fill="outline" routerLink="/informe">Informe semanal</ion-button>
+            <ion-button fill="outline" routerLink="/evolucion">Mi evolución</ion-button>
+            <ion-button fill="outline" routerLink="/pareja">Mi pareja</ion-button>
+            <ion-button fill="outline" routerLink="/mis-datos">Mis datos</ion-button>
+          </nav>
+
           <section class="kpis" aria-label="Resumen">
             <div class="kpi">
               <ion-icon name="flame-outline" aria-hidden="true"></ion-icon><strong>{{ st.streakWeeks }}</strong
@@ -305,6 +314,16 @@ const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', '
     }
     ion-card {
       margin: 12px 0;
+    }
+    .more {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .more ion-button {
+      margin: 0;
+      min-height: 44px;
     }
     .kpis {
       display: grid;
